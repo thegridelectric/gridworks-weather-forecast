@@ -1,0 +1,15 @@
+# Seed request for gridworks-weather-forecast (gwwf).
+#
+# Drives `uv run sema snapshot prepare ... && sema snapshot build --package-name gwwf`
+# (run from the sema repo). Output appears under sema/output/sema/; copy it
+# into src/gwwf/sema/ to refresh the vendored snapshot.
+#
+# Today gwwf publishes only `weather` (v000) — see
+# wiki/gridworks-weather-forecast/research/design-intent.md for the
+# trajectory toward `weather.forecast` (LTN forward-looking optimizers)
+# and the eventual `gw.weather` rename. As those types come online they
+# get added here.
+
+initial_targets:
+  types:
+    weather: {}

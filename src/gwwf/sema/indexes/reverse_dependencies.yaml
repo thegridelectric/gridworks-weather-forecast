@@ -1,0 +1,12 @@
+# GENERATED FILE - DO NOT EDIT
+# Generated from definitions/registry.yaml
+
+types: {}
+enums: {}
+formats:
+  left.right.dot:
+    used_by:
+    - weather:000
+  utc.seconds:
+    used_by:
+    - weather:000

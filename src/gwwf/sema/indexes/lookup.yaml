@@ -1,0 +1,20 @@
+# GENERATED FILE - DO NOT EDIT
+# Generated from definitions/registry.yaml
+#
+# ------------------------------------------------------------------
+# LOCAL LOOKUP (NON-AUTHORITATIVE)
+#
+# This file provides local resolution from Sema vocabulary words
+# to schema files within this snapshot.
+# ------------------------------------------------------------------
+
+types:
+  weather:
+    latest_version: '000'
+    versioning_strategy: literal
+    versions:
+      '000': definitions/types/weather/000.yaml
+enums: {}
+formats:
+  left.right.dot: definitions/formats/left.right.dot.yaml
+  utc.seconds: definitions/formats/utc.seconds.yaml

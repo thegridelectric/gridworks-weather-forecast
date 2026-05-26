@@ -1,0 +1,17 @@
+metadata:
+  generated_from: indexes/public_registry.yaml
+  generated_at: '2026-05-24T17:10:29Z'
+  note: Transitive closure of initial_targets
+initial_targets:
+- weather:000
+worklist:
+  formats:
+    left.right.dot:
+      path: definitions/formats/left.right.dot.yaml
+    utc.seconds:
+      path: definitions/formats/utc.seconds.yaml
+  enums: {}
+  types:
+    weather:
+      '000':
+        path: definitions/types/weather/000.yaml

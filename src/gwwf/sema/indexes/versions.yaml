@@ -1,0 +1,13 @@
+# GENERATED FILE - DO NOT EDIT
+# Generated from definitions/registry.yaml
+
+
+types:
+  weather:
+    latest_version: "000"
+    versioning_strategy: "literal"
+    versions:
+      "000":
+        summary: "Initial Sema version — like-for-like port of the legacy weather_service.py wire shape onto Sema."
+
+enums:

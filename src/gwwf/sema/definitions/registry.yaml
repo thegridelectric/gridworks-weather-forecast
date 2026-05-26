@@ -1,0 +1,39 @@
+metadata:
+  registry_version: "1.0"
+  last_updated: "2026-05-24T17:00:00Z"
+  maintainer: "gridworks-energy"
+
+snapshot:
+  built_at: "2026-05-24T17:10:29Z"
+
+formats:
+  left.right.dot:
+    owner: gridworks-energy
+    schema_url: "https://schemas.electricity.works/formats/left.right.dot"
+    created: "2022-01-01T00:00:00Z"
+    description: "Dot-separated hierarchical identifier composed of lowercase alphanumeric segments"
+
+  utc.seconds:
+    owner: gridworks-energy
+    schema_url: "https://schemas.electricity.works/formats/utc.seconds"
+    created: "2024-09-02T15:00:00Z"
+    description: "UTC timestamp in whole seconds since Unix epoch (2000–3000 range)"
+
+enums: {}
+
+types:
+  weather:
+    latest_version: "000"
+    owner: gridworks-energy
+    versioning_strategy: "literal"
+    description: "Single-instant real-time outside-air-temperature and wind-speed observation from a third-party weather source, identified by a weather channel name (e.g. weather.gov.kmlt)."
+
+    versions:
+      "000":
+        schema_url: "https://schemas.electricity.works/types/weather/000"
+        created: "2026-05-24T16:59:25Z"
+        summary: "Initial Sema version — like-for-like port of the legacy weather_service.py wire shape onto Sema."
+        direct_dependencies:
+          structural:
+            - "left.right.dot"
+            - "utc.seconds"
