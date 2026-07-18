@@ -1,9 +1,7 @@
 """WeatherActor — like-for-like port of gjk/weather_service.py onto gwbase 0.4.0.
 
 Polls NWS for the latest KMLT observation every 10 minutes and broadcasts a
-`weather` v000 message. The broadcast envelope's routing class is `weather`
-(long form, via `TransportClass.WeatherForecastService`); publish goes to
-`amq.topic`. Consume exchange is `ws_tx` (matches prod broker fabric).
+`weather` v000 message. 
 """
 
 from __future__ import annotations
@@ -108,10 +106,6 @@ class WeatherActor(GridworksActor):
             my_time_coordinator_alias=settings.my_time_coordinator_alias,
         )
         self.settings: GwwfSettings = settings
-        # Prod broker exchange uses the short form `ws_tx`, not `weather_tx`.
-        # (Drift between gwbase.topology canonical names and the deployed
-        # broker — same family as F-007.) Override before super's queue setup.
-        self._consume_exchange = "ws_tx"
         self.main_thread = threading.Thread(target=self.main, daemon=True)
 
     def local_start(self) -> None:
