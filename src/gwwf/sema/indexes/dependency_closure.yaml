@@ -2,6 +2,84 @@
 # Generated from definitions/registry.yaml
 
 types:
+  glitch:
+    '000':
+      enums:
+      - log.level:000
+      formats:
+      - left.right.dot
+      - spaceheat.name
+      - utc.milliseconds
+      types: []
+      versionless_types: []
+  gw.weather.channel.gt:
+    '000':
+      enums:
+      - gw1.quantity:002
+      - gw1.unit:002
+      formats:
+      - left.right.dot
+      - non.empty.string
+      - non.negative.int
+      - positive.int
+      - utc.iso8601.seconds
+      - uuid4.str
+      types: []
+      versionless_types: []
+  gw.weather.forecast:
+    '000':
+      enums:
+      - gw.weather.forecast.fidelity:000
+      formats:
+      - left.right.dot
+      - utc.iso8601.seconds
+      - utc.milliseconds
+      types: []
+      versionless_types: []
+  gw.weather.forecast.bundle.gt:
+    '000':
+      enums:
+      - gw1.quantity:002
+      - gw1.unit:002
+      formats:
+      - left.right.dot
+      - non.empty.string
+      - non.negative.int
+      - positive.int
+      - utc.iso8601.seconds
+      - uuid4.str
+      types:
+      - gw.weather.channel.gt:000
+      - gw.weather.forecast.channel.gt:000
+      versionless_types: []
+  gw.weather.forecast.channel.gt:
+    '000':
+      enums: []
+      formats:
+      - left.right.dot
+      - non.empty.string
+      - positive.int
+      - utc.iso8601.seconds
+      - uuid4.str
+      types: []
+      versionless_types: []
+  gw.weather.location.gt:
+    '000':
+      enums: []
+      formats:
+      - left.right.dot
+      - non.empty.string
+      - uuid4.str
+      types: []
+      versionless_types: []
+  gw.weather.observation:
+    '000':
+      enums: []
+      formats:
+      - left.right.dot
+      - utc.iso8601.seconds
+      types: []
+      versionless_types: []
   weather:
     '000':
       enums: []

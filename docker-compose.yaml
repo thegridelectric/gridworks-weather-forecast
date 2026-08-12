@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: gwwf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gwwf
+      POSTGRES_PASSWORD: gwwfpass
+      POSTGRES_DB: gwwf
+    ports:
+      # Host 5436 → container 5432. Not 5432 (host-local Postgres shadowing
+      # on macOS); 5433/5434 are gw-data-pg's, 5435 is gnr-postgres.
+      - "5436:5432"
+    volumes:
+      - gwwf_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "gwwf"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  gwwf_pgdata:
+    name: gwwf_pgdata

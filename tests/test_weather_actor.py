@@ -58,7 +58,9 @@ def test_weather_axiom_1_rejects_negative_wind() -> None:
     SHALL be >= 0."""
     import pytest
 
-    with pytest.raises(Exception):  # Pydantic ValidationError wraps the axiom ValueError
+    with pytest.raises(
+        Exception
+    ):  # Pydantic ValidationError wraps the axiom ValueError
         Weather(
             from_g_node_alias="hw1.isone.ws",
             weather_channel_name="weather.gov.kmlt",

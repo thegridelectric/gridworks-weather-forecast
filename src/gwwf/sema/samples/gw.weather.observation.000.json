@@ -1,0 +1,11 @@
+{
+  "TypeName": "gw.weather.observation",
+  "Version": "000",
+  "LocationAlias": "us.me.millinocket",
+  "ObservationTime": "2026-08-12T13:35:00Z",
+  "Interpolated": false,
+  "TempChannelName": "us.me.millinocket.temperature",
+  "TempValue": 7268,
+  "WindSpeedChannelName": "us.me.millinocket.windspeed",
+  "WindSpeedValue": 4500
+}

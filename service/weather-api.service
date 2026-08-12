@@ -1,0 +1,18 @@
+[Unit]
+Description=GridWorks weather — public read-only HTTP façade (loopback; proxy fronts TLS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=weather
+# Repo root as CWD so `.env` at the repo root resolves.
+# User/paths assume the single-service login `weather`; adjust at deploy
+# if the chosen home box uses a different login.
+WorkingDirectory=/home/weather/gridworks-weather-forecast
+ExecStart=/home/weather/gridworks-weather-forecast/.venv/bin/gwwf api
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
