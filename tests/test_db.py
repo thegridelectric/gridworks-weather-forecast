@@ -6,12 +6,15 @@ read comes back as codec-validated instances equal to what went in.
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from gwwf import records
+from tests import records
 from gwwf.db.models import ForecastSql
 from gwwf.db.store import (
+    insert_record,
     latest_forecast,
     load_bundles,
     load_forecast_channels,
@@ -21,12 +24,16 @@ from gwwf.db.store import (
     load_weather_channels,
     save_last_observation,
     save_product,
-    seed_records,
     store_forecast,
 )
 from gwwf.nws import HourlyForecastProduct
-from gwwf.sema.enums import GwWeatherForecastFidelity
-from gwwf.sema.types import GwWeatherForecast, GwWeatherObservation
+from gwwf.sema.codec import default_codec
+from gwwf.sema.enums import WeatherForecastFidelity
+from gwwf.sema.types import (
+    WeatherForecast,
+    WeatherForecastBundleGt,
+    WeatherObservation,
+)
 
 METHOD = "api.weather.gov.gridpoint.hourly"
 LOCATOR = "car.60.114"
@@ -35,12 +42,12 @@ BUNDLE = records.MILLINOCKET_NWS_HOURLY_BUNDLE
 
 def forecast_message(
     source_updated: str, first_slice: str, created_ms: int
-) -> GwWeatherForecast:
-    return GwWeatherForecast(
+) -> WeatherForecast:
+    return WeatherForecast(
         bundle_name=BUNDLE.name,
         source_updated_time=source_updated,
         message_created_ms=created_ms,
-        fidelity=GwWeatherForecastFidelity.Live,
+        fidelity=WeatherForecastFidelity.Live,
         first_slice_start=first_slice,
         temp_channel_name=BUNDLE.temp_forecast_channel.name,
         temp_values=[7000] * 48,
@@ -49,9 +56,8 @@ def forecast_message(
     )
 
 
-def test_seed_round_trips_as_equal_records(db_session: Session) -> None:
-    seed_records(db_session)
-    seed_records(db_session)  # idempotent
+def test_records_round_trip_as_equal_records(db_session: Session) -> None:
+    records.seed(db_session)
     assert load_locations(db_session) == [records.MILLINOCKET_LOCATION]
     assert load_weather_channels(db_session) == records.OBSERVATION_CHANNELS
     assert load_forecast_channels(db_session) == records.FORECAST_CHANNELS
@@ -59,8 +65,39 @@ def test_seed_round_trips_as_equal_records(db_session: Session) -> None:
     assert load_bundles(db_session) == records.FORECAST_BUNDLES
 
 
+def test_insert_record_is_insert_only(db_session: Session) -> None:
+    records.seed(db_session)
+    # Records are durable identities: a second create of the same
+    # record refuses, never upserts.
+    with pytest.raises(IntegrityError):
+        insert_record(db_session, records.MILLINOCKET_LOCATION)
+    # ... and the refusal leaves the session usable (rolled back).
+    assert load_locations(db_session) == [records.MILLINOCKET_LOCATION]
+
+
+def test_insert_record_enforces_referential_order(db_session: Session) -> None:
+    # A channel before its location refuses on the FK.
+    with pytest.raises(IntegrityError):
+        insert_record(db_session, records.TEMPERATURE_CHANNEL)
+    # A bundle whose channels are absent refuses with the reason.
+    insert_record(db_session, records.MILLINOCKET_LOCATION)
+    with pytest.raises(ValueError, match="no canonical record"):
+        insert_record(db_session, records.MILLINOCKET_NWS_HOURLY_BUNDLE)
+
+
+def test_insert_bundle_requires_embedded_agreement(db_session: Session) -> None:
+    records.seed(db_session)
+    payload = records.MILLINOCKET_NWS_HOURLY_BUNDLE.to_dict()
+    payload["Name"] = "us.me.millinocket.forecast.nws.hourly2"
+    payload["Id"] = "5b8f0f5e-6d0a-4b64-9c40-1c4c2f0a9e77"
+    payload["TempForecastChannel"]["SourceLocator"] = "car.61.115"
+    drifted = default_codec.from_dict(payload, expect=WeatherForecastBundleGt)
+    with pytest.raises(ValueError, match="disagrees with the canonical record"):
+        insert_record(db_session, drifted)
+
+
 def test_forecast_store_keeps_send_distinct_messages(db_session: Session) -> None:
-    seed_records(db_session)
+    records.seed(db_session)
     same_window = forecast_message(
         "2026-08-12T09:09:03Z", "2026-08-12T14:00:00Z", 1786280400000
     )
@@ -101,8 +138,8 @@ def test_product_cache_round_trips(db_session: Session) -> None:
 
 
 def test_last_observation_round_trips(db_session: Session) -> None:
-    seed_records(db_session)
-    observation = GwWeatherObservation(
+    records.seed(db_session)
+    observation = WeatherObservation(
         location_alias=records.MILLINOCKET_LOCATION.alias,
         observation_time="2026-08-11T17:55:00Z",
         interpolated=False,

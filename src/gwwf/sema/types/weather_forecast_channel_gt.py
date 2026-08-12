@@ -8,7 +8,7 @@ from gwwf.sema.property_format import UUID4Str
 from gwwf.sema.property_format import UtcIso8601Seconds
 
 
-class GwWeatherForecastChannelGt(SemaType):
+class WeatherForecastChannelGt(SemaType):
     """Sema: https://schemas.electricity.works/types/gw.weather.forecast.channel.gt/000"""
 
     name: LeftRightDot
@@ -27,7 +27,7 @@ class GwWeatherForecastChannelGt(SemaType):
     version: Literal["000"] = "000"
 
     @model_validator(mode="after")
-    def check_axiom_1(self) -> "GwWeatherForecastChannelGt":
+    def check_axiom_1(self) -> "WeatherForecastChannelGt":
         """
         Axiom 1: SliceCount
         TotalSlices SHALL equal the number of elements of SliceDurationSList.
@@ -41,7 +41,7 @@ class GwWeatherForecastChannelGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_2(self) -> "GwWeatherForecastChannelGt":
+    def check_axiom_2(self) -> "WeatherForecastChannelGt":
         """
         Axiom 2: DurationConsistency
         The sum of SliceDurationSList SHALL equal ForecastDurationMinutes times 60.
@@ -56,7 +56,7 @@ class GwWeatherForecastChannelGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_3(self) -> "GwWeatherForecastChannelGt":
+    def check_axiom_3(self) -> "WeatherForecastChannelGt":
         """
         Axiom 3: SliceQuantum
         Every element of SliceDurationSList SHALL be a positive multiple of 300.
@@ -71,7 +71,7 @@ class GwWeatherForecastChannelGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_4(self) -> "GwWeatherForecastChannelGt":
+    def check_axiom_4(self) -> "WeatherForecastChannelGt":
         """
         Axiom 4: NameShape
         Name SHALL equal TargetChannelName + ".forecast." followed by one or more

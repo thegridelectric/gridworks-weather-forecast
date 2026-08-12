@@ -19,5 +19,14 @@ initial_targets:
     gw.weather.forecast.bundle.gt: {}
     gw.weather.forecast.channel.gt: {}
     gw.weather.location.gt: {}
+    gw.weather.create.cmd: {}
+    gw.weather.cmd.ack: {}
+    gw.weather.cmd.nack: {}
     glitch: {}
     weather: {}
+
+# Local class/module names drop the gw ceremony inside this package:
+# gw.weather.observation -> WeatherObservation, gw1.unit -> Unit. Wire
+# TypeNames are untouched.
+local_names:
+  strip_prefixes: [gw1, gw]

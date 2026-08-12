@@ -5,7 +5,7 @@ from gwwf.sema.property_format import LeftRightDot
 from gwwf.sema.property_format import UtcIso8601Seconds
 
 
-class GwWeatherObservation(SemaType):
+class WeatherObservation(SemaType):
     """Sema: https://schemas.electricity.works/types/gw.weather.observation/000"""
 
     location_alias: LeftRightDot
@@ -19,7 +19,7 @@ class GwWeatherObservation(SemaType):
     version: Literal["000"] = "000"
 
     @model_validator(mode="after")
-    def check_axiom_1(self) -> "GwWeatherObservation":
+    def check_axiom_1(self) -> "WeatherObservation":
         """
         Axiom 1: DistinctChannels
         TempChannelName SHALL differ from WindSpeedChannelName.
@@ -32,7 +32,7 @@ class GwWeatherObservation(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_2(self) -> "GwWeatherObservation":
+    def check_axiom_2(self) -> "WeatherObservation":
         """
         Axiom 2: LocationNaming
         a. TempChannelName SHALL begin with LocationAlias followed by ".".

@@ -1,45 +1,59 @@
-"""Standup seed records — validated instances of the .gt words.
+"""Standup record instances — test fixtures.
 
-The gridworks-weather DB is the canonical seed for these records;
-this module is the interim in-code seed and retires into DB lookups
-when the DB lands. Ids are fixed uuid4s minted 2026-08-11: records
-are durable identities, never per-boot state. KMLT coordinates are
-from background knowledge — verify against station metadata before
-canonizing into the DB seed.
+These were the in-code production seed until records began entering by
+create command over the bus; production records now live in the DB and
+the eventstore, and tests carry their own instances. Ids are fixed
+uuid4s minted 2026-08-11. KMLT coordinates are from background
+knowledge — verify against station metadata before treating as
+canonical facts.
 """
 
-from gwwf.names import (
-    MILLINOCKET,
-    MILLINOCKET_FORECAST_NWS_HOURLY,
-    MILLINOCKET_TEMPERATURE,
-    MILLINOCKET_TEMPERATURE_FORECAST_NWS_HOURLY,
-    MILLINOCKET_WINDSPEED,
-    MILLINOCKET_WINDSPEED_FORECAST_NWS_HOURLY,
-)
-from gwwf.sema.enums import Gw1Quantity, Gw1Unit
+from pydantic import TypeAdapter
+from sqlalchemy.orm import Session
+
+from gwwf.db.store import insert_record
+from gwwf.sema.enums import Quantity, Unit
+from gwwf.sema.property_format import LeftRightDot
 from gwwf.sema.types import (
-    GwWeatherChannelGt,
-    GwWeatherForecastBundleGt,
-    GwWeatherForecastChannelGt,
-    GwWeatherLocationGt,
+    WeatherChannelGt,
+    WeatherForecastBundleGt,
+    WeatherForecastChannelGt,
+    WeatherLocationGt,
 )
 
-MILLINOCKET_LOCATION = GwWeatherLocationGt(
+_lrd: TypeAdapter[LeftRightDot] = TypeAdapter(LeftRightDot)
+
+MILLINOCKET: LeftRightDot = _lrd.validate_python("us.me.millinocket")
+MILLINOCKET_TEMPERATURE: LeftRightDot = _lrd.validate_python(
+    "us.me.millinocket.temperature"
+)
+MILLINOCKET_WINDSPEED: LeftRightDot = _lrd.validate_python(
+    "us.me.millinocket.windspeed"
+)
+MILLINOCKET_TEMPERATURE_FORECAST_NWS_HOURLY: LeftRightDot = _lrd.validate_python(
+    "us.me.millinocket.temperature.forecast.nws.hourly"
+)
+MILLINOCKET_WINDSPEED_FORECAST_NWS_HOURLY: LeftRightDot = _lrd.validate_python(
+    "us.me.millinocket.windspeed.forecast.nws.hourly"
+)
+MILLINOCKET_FORECAST_NWS_HOURLY: LeftRightDot = _lrd.validate_python(
+    "us.me.millinocket.forecast.nws.hourly"
+)
+
+MILLINOCKET_LOCATION = WeatherLocationGt(
     alias=MILLINOCKET,
     latitude_microdegrees=45_647_800,
     longitude_microdegrees=-68_685_600,
-    # Hand-validated IANA name; a sema timezone format word would
-    # retire the bare string (noted in the vocabulary).
     timezone="America/New_York",
     icao_id="KMLT",
     id="822626e8-f4b2-4bc8-b815-afdc3cab5dfb",
 )
 
-TEMPERATURE_CHANNEL = GwWeatherChannelGt(
+TEMPERATURE_CHANNEL = WeatherChannelGt(
     name=MILLINOCKET_TEMPERATURE,
     display_name="Millinocket outdoor air temperature",
-    quantity=Gw1Quantity.Temperature,
-    unit=Gw1Unit.FahrenheitX100,
+    quantity=Quantity.Temperature,
+    unit=Unit.FahrenheitX100,
     location_alias=MILLINOCKET,
     emit_period_s=3600,
     emit_offset_s=0,
@@ -47,11 +61,11 @@ TEMPERATURE_CHANNEL = GwWeatherChannelGt(
     id="6ffaacf0-701d-49d8-a20b-cd89de9a21ea",
 )
 
-WINDSPEED_CHANNEL = GwWeatherChannelGt(
+WINDSPEED_CHANNEL = WeatherChannelGt(
     name=MILLINOCKET_WINDSPEED,
     display_name="Millinocket wind speed",
-    quantity=Gw1Quantity.WindSpeed,
-    unit=Gw1Unit.MilesPerHourX1000,
+    quantity=Quantity.WindSpeed,
+    unit=Unit.MilesPerHourX1000,
     location_alias=MILLINOCKET,
     emit_period_s=3600,
     emit_offset_s=0,
@@ -59,7 +73,7 @@ WINDSPEED_CHANNEL = GwWeatherChannelGt(
     id="2ee66a85-a869-4a34-98c2-3dd93718ce8a",
 )
 
-TEMPERATURE_FORECAST_NWS_HOURLY_CHANNEL = GwWeatherForecastChannelGt(
+TEMPERATURE_FORECAST_NWS_HOURLY_CHANNEL = WeatherForecastChannelGt(
     name=MILLINOCKET_TEMPERATURE_FORECAST_NWS_HOURLY,
     target_channel_name=MILLINOCKET_TEMPERATURE,
     forecaster="us.nws.gridpoint",
@@ -72,7 +86,7 @@ TEMPERATURE_FORECAST_NWS_HOURLY_CHANNEL = GwWeatherForecastChannelGt(
     id="dc3d3844-6c8c-466b-8140-eb06900b4bf8",
 )
 
-WINDSPEED_FORECAST_NWS_HOURLY_CHANNEL = GwWeatherForecastChannelGt(
+WINDSPEED_FORECAST_NWS_HOURLY_CHANNEL = WeatherForecastChannelGt(
     name=MILLINOCKET_WINDSPEED_FORECAST_NWS_HOURLY,
     target_channel_name=MILLINOCKET_WINDSPEED,
     forecaster="us.nws.gridpoint",
@@ -85,7 +99,7 @@ WINDSPEED_FORECAST_NWS_HOURLY_CHANNEL = GwWeatherForecastChannelGt(
     id="23cc841c-8e12-4d1e-9030-ed9ef8923592",
 )
 
-MILLINOCKET_NWS_HOURLY_BUNDLE = GwWeatherForecastBundleGt(
+MILLINOCKET_NWS_HOURLY_BUNDLE = WeatherForecastBundleGt(
     name=MILLINOCKET_FORECAST_NWS_HOURLY,
     display_name="Millinocket NWS hourly forecast bundle",
     location_alias=MILLINOCKET,
@@ -105,3 +119,15 @@ FORECAST_CHANNELS = [
     WINDSPEED_FORECAST_NWS_HOURLY_CHANNEL,
 ]
 FORECAST_BUNDLES = [MILLINOCKET_NWS_HOURLY_BUNDLE]
+
+
+def seed(session: Session) -> None:
+    """Insert the standup six in referential order through the
+    insert-only store path."""
+    for record in [
+        MILLINOCKET_LOCATION,
+        *OBSERVATION_CHANNELS,
+        *FORECAST_CHANNELS,
+        *FORECAST_BUNDLES,
+    ]:
+        insert_record(session, record)

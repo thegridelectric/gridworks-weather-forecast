@@ -3,7 +3,7 @@ from enum import auto
 from gwwf.sema.enums.gw_str_enum import SemaEnum
 
 
-class Gw1Unit(SemaEnum):
+class Unit(SemaEnum):
     """Sema: https://schemas.electricity.works/enums/gw1.unit/002"""
 
     Unknown = auto()
@@ -21,7 +21,7 @@ class Gw1Unit(SemaEnum):
     KilowattHoursX1000 = auto()
 
     @classmethod
-    def default(cls) -> "Gw1Unit":
+    def default(cls) -> "Unit":
         return cls.Unknown
 
     @classmethod

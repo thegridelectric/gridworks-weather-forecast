@@ -1,11 +1,11 @@
-from gwwf.sema.enums.gw1_quantity import Gw1Quantity
-from gwwf.sema.enums.gw1_unit import Gw1Unit
-from gwwf.sema.enums.gw_weather_forecast_fidelity import GwWeatherForecastFidelity
 from gwwf.sema.enums.log_level import LogLevel
+from gwwf.sema.enums.quantity import Quantity
+from gwwf.sema.enums.unit import Unit
+from gwwf.sema.enums.weather_forecast_fidelity import WeatherForecastFidelity
 
 __all__ = [
-    "Gw1Quantity",
-    "Gw1Unit",
-    "GwWeatherForecastFidelity",
     "LogLevel",
+    "Quantity",
+    "Unit",
+    "WeatherForecastFidelity",
 ]

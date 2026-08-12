@@ -3,7 +3,7 @@
 Observations come from ``/stations/<station>/observations``, which
 serves newest-first; the adapter takes the newest usable feature.
 Forecasts come from the gridpoint hourly product;
-``GwWeatherForecast.source_updated_time`` binds the product's
+``WeatherForecast.source_updated_time`` binds the product's
 ``updateTime`` (the underlying data stamp — ``generatedAt`` refreshes
 per render even when the data is hours older).
 """
@@ -16,7 +16,7 @@ from typing import Any, NamedTuple
 import requests
 
 from gwwf.sema.property_format import LeftRightDot, UtcIso8601Seconds
-from gwwf.sema.types import GwWeatherObservation
+from gwwf.sema.types import WeatherObservation
 
 NWS_BASE = "https://api.weather.gov"
 # NWS asks that clients identify themselves with a contact in the UA.
@@ -77,7 +77,7 @@ def fetch_latest_observation(
     location_alias: LeftRightDot,
     temperature_channel: LeftRightDot,
     windspeed_channel: LeftRightDot,
-) -> GwWeatherObservation:
+) -> WeatherObservation:
     """Newest usable station observation as a snapshot instance.
 
     Walks the newest-first feature list and returns the first feature
@@ -105,7 +105,7 @@ def fetch_latest_observation(
                     f"unexpected windSpeed unit {wind.get('unitCode')}"
                 )
             wind_value = _kmh_to_mph_x1000(wind["value"])
-        return GwWeatherObservation(
+        return WeatherObservation(
             location_alias=location_alias,
             observation_time=_iso_seconds_z(timestamp),
             interpolated=False,

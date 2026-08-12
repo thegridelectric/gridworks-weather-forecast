@@ -3,7 +3,7 @@ from enum import auto
 from gwwf.sema.enums.gw_str_enum import SemaEnum
 
 
-class GwWeatherForecastFidelity(SemaEnum):
+class WeatherForecastFidelity(SemaEnum):
     """Sema: https://schemas.electricity.works/enums/gw.weather.forecast.fidelity/000"""
 
     Unknown = auto()
@@ -12,7 +12,7 @@ class GwWeatherForecastFidelity(SemaEnum):
     SeasonalTemplate = auto()
 
     @classmethod
-    def default(cls) -> "GwWeatherForecastFidelity":
+    def default(cls) -> "WeatherForecastFidelity":
         return cls.Unknown
 
     @classmethod

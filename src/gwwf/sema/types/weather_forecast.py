@@ -1,19 +1,19 @@
 from typing import Literal
 from pydantic import StrictInt, model_validator
 from gwwf.sema.base import SemaType
-from gwwf.sema.enums import GwWeatherForecastFidelity
+from gwwf.sema.enums import WeatherForecastFidelity
 from gwwf.sema.property_format import LeftRightDot
 from gwwf.sema.property_format import UTCMilliseconds
 from gwwf.sema.property_format import UtcIso8601Seconds
 
 
-class GwWeatherForecast(SemaType):
+class WeatherForecast(SemaType):
     """Sema: https://schemas.electricity.works/types/gw.weather.forecast/000"""
 
     bundle_name: LeftRightDot
     source_updated_time: UtcIso8601Seconds
     message_created_ms: UTCMilliseconds
-    fidelity: GwWeatherForecastFidelity
+    fidelity: WeatherForecastFidelity
     first_slice_start: UtcIso8601Seconds
     temp_channel_name: LeftRightDot
     temp_values: list[StrictInt]
@@ -23,7 +23,7 @@ class GwWeatherForecast(SemaType):
     version: Literal["000"] = "000"
 
     @model_validator(mode="after")
-    def check_axiom_1(self) -> "GwWeatherForecast":
+    def check_axiom_1(self) -> "WeatherForecast":
         """
         Axiom 1: NonEmptyValues
         TempValues and WindSpeedValues SHALL be non-empty.
@@ -36,7 +36,7 @@ class GwWeatherForecast(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_2(self) -> "GwWeatherForecast":
+    def check_axiom_2(self) -> "WeatherForecast":
         """
         Axiom 2: EqualValueLengths
         len(TempValues) SHALL equal len(WindSpeedValues).
@@ -50,7 +50,7 @@ class GwWeatherForecast(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_3(self) -> "GwWeatherForecast":
+    def check_axiom_3(self) -> "WeatherForecast":
         """
         Axiom 3: DistinctChannels
         TempChannelName SHALL differ from WindSpeedChannelName.
@@ -63,7 +63,7 @@ class GwWeatherForecast(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_4(self) -> "GwWeatherForecast":
+    def check_axiom_4(self) -> "WeatherForecast":
         """
         Axiom 4: ForecastNaming
         a. BundleName SHALL contain "forecast" as an interior segment.

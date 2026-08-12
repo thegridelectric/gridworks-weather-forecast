@@ -6,7 +6,7 @@ from gwwf.sema.property_format import NonEmptyString
 from gwwf.sema.property_format import UUID4Str
 
 
-class GwWeatherLocationGt(SemaType):
+class WeatherLocationGt(SemaType):
     """Sema: https://schemas.electricity.works/types/gw.weather.location.gt/000"""
 
     alias: LeftRightDot
@@ -22,7 +22,7 @@ class GwWeatherLocationGt(SemaType):
     version: Literal["000"] = "000"
 
     @model_validator(mode="after")
-    def check_axiom_1(self) -> "GwWeatherLocationGt":
+    def check_axiom_1(self) -> "WeatherLocationGt":
         """
         Axiom 1: CoordinateBounds
         a. The absolute value of LatitudeMicrodegrees SHALL be at most 90000000.

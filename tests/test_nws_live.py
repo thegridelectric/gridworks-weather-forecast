@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from gwwf.names import MILLINOCKET, MILLINOCKET_TEMPERATURE, MILLINOCKET_WINDSPEED
+from tests.records import MILLINOCKET, MILLINOCKET_TEMPERATURE, MILLINOCKET_WINDSPEED
 from gwwf.nws import (
     CAR_GRIDPOINT,
     KMLT_STATION,

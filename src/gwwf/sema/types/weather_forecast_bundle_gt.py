@@ -7,20 +7,20 @@ from gwwf.sema.property_format import NonNegativeInt
 from gwwf.sema.property_format import PositiveInt
 from gwwf.sema.property_format import UUID4Str
 from gwwf.sema.property_format import UtcIso8601Seconds
-from gwwf.sema.types.gw_weather_channel_gt import GwWeatherChannelGt
-from gwwf.sema.types.gw_weather_forecast_channel_gt import GwWeatherForecastChannelGt
+from gwwf.sema.types.weather_channel_gt import WeatherChannelGt
+from gwwf.sema.types.weather_forecast_channel_gt import WeatherForecastChannelGt
 
 
-class GwWeatherForecastBundleGt(SemaType):
+class WeatherForecastBundleGt(SemaType):
     """Sema: https://schemas.electricity.works/types/gw.weather.forecast.bundle.gt/000"""
 
     name: LeftRightDot
     display_name: NonEmptyString
     location_alias: LeftRightDot
-    temp_forecast_channel: GwWeatherForecastChannelGt
-    temp_observation_channel: GwWeatherChannelGt
-    wind_speed_forecast_channel: GwWeatherForecastChannelGt
-    wind_speed_observation_channel: GwWeatherChannelGt
+    temp_forecast_channel: WeatherForecastChannelGt
+    temp_observation_channel: WeatherChannelGt
+    wind_speed_forecast_channel: WeatherForecastChannelGt
+    wind_speed_observation_channel: WeatherChannelGt
     emit_period_s: PositiveInt
     emit_offset_s: NonNegativeInt
     start: UtcIso8601Seconds
@@ -31,7 +31,7 @@ class GwWeatherForecastBundleGt(SemaType):
     version: Literal["000"] = "000"
 
     @model_validator(mode="after")
-    def check_axiom_1(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_1(self) -> "WeatherForecastBundleGt":
         """
         Axiom 1: SharedSliceGrid
         TempForecastChannel and WindSpeedForecastChannel SHALL declare
@@ -49,7 +49,7 @@ class GwWeatherForecastBundleGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_2(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_2(self) -> "WeatherForecastBundleGt":
         """
         Axiom 2: EmitOffsetBound
         EmitOffsetS SHALL be strictly less than EmitPeriodS.
@@ -63,7 +63,7 @@ class GwWeatherForecastBundleGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_3(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_3(self) -> "WeatherForecastBundleGt":
         """
         Axiom 3: DistinctChannels
         TempForecastChannel.Name SHALL differ from
@@ -78,7 +78,7 @@ class GwWeatherForecastBundleGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_4(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_4(self) -> "WeatherForecastBundleGt":
         """
         Axiom 4: TargetBinding
         TempForecastChannel.TargetChannelName SHALL equal
@@ -100,7 +100,7 @@ class GwWeatherForecastBundleGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_5(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_5(self) -> "WeatherForecastBundleGt":
         """
         Axiom 5: QuantityTargeting
         TempObservationChannel.Quantity SHALL be Temperature, and
@@ -120,7 +120,7 @@ class GwWeatherForecastBundleGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_6(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_6(self) -> "WeatherForecastBundleGt":
         """
         Axiom 6: LocationConsistency
         TempObservationChannel.LocationAlias and
@@ -138,7 +138,7 @@ class GwWeatherForecastBundleGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_7(self) -> "GwWeatherForecastBundleGt":
+    def check_axiom_7(self) -> "WeatherForecastBundleGt":
         """
         Axiom 7: ForecastNaming
         Name SHALL equal LocationAlias + ".forecast." followed by one or more

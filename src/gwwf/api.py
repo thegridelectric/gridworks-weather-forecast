@@ -39,12 +39,12 @@ from gwwf.db.store import (
 )
 from gwwf.sema.property_format import LeftRightDot
 from gwwf.sema.types import (
-    GwWeatherChannelGt,
-    GwWeatherForecast,
-    GwWeatherForecastBundleGt,
-    GwWeatherForecastChannelGt,
-    GwWeatherLocationGt,
-    GwWeatherObservation,
+    WeatherChannelGt,
+    WeatherForecast,
+    WeatherForecastBundleGt,
+    WeatherForecastChannelGt,
+    WeatherLocationGt,
+    WeatherObservation,
 )
 
 # Where a sema word's definition lives — one constant so the whole docs
@@ -58,14 +58,12 @@ SEMA_DEFINITION_URL = (
 class WeatherReads(Protocol):
     """The read seam the façade serves — store-backed by default."""
 
-    def channels(self) -> list[GwWeatherChannelGt]: ...
-    def forecast_channels(self) -> list[GwWeatherForecastChannelGt]: ...
-    def bundles(self) -> list[GwWeatherForecastBundleGt]: ...
-    def locations(self) -> list[GwWeatherLocationGt]: ...
-    def latest_observation(
-        self, location_alias: str
-    ) -> GwWeatherObservation | None: ...
-    def latest_forecast(self, bundle_name: str) -> GwWeatherForecast | None: ...
+    def channels(self) -> list[WeatherChannelGt]: ...
+    def forecast_channels(self) -> list[WeatherForecastChannelGt]: ...
+    def bundles(self) -> list[WeatherForecastBundleGt]: ...
+    def locations(self) -> list[WeatherLocationGt]: ...
+    def latest_observation(self, location_alias: str) -> WeatherObservation | None: ...
+    def latest_forecast(self, bundle_name: str) -> WeatherForecast | None: ...
 
 
 class StoreReads:
@@ -74,28 +72,28 @@ class StoreReads:
     def __init__(self, settings: GwwfSettings) -> None:
         self._sessions = session_factory_from(settings)
 
-    def channels(self) -> list[GwWeatherChannelGt]:
+    def channels(self) -> list[WeatherChannelGt]:
         with self._sessions() as session:
             return load_weather_channels(session)
 
-    def forecast_channels(self) -> list[GwWeatherForecastChannelGt]:
+    def forecast_channels(self) -> list[WeatherForecastChannelGt]:
         with self._sessions() as session:
             return load_forecast_channels(session)
 
-    def bundles(self) -> list[GwWeatherForecastBundleGt]:
+    def bundles(self) -> list[WeatherForecastBundleGt]:
         with self._sessions() as session:
             return load_bundles(session)
 
-    def locations(self) -> list[GwWeatherLocationGt]:
+    def locations(self) -> list[WeatherLocationGt]:
         with self._sessions() as session:
             return load_locations(session)
 
-    def latest_observation(self, location_alias: str) -> GwWeatherObservation | None:
+    def latest_observation(self, location_alias: str) -> WeatherObservation | None:
         with self._sessions() as session:
             stored = load_last_observation(session, location_alias)
         return stored.observation if stored else None
 
-    def latest_forecast(self, bundle_name: str) -> GwWeatherForecast | None:
+    def latest_forecast(self, bundle_name: str) -> WeatherForecast | None:
         with self._sessions() as session:
             return latest_forecast(session, bundle_name)
 
@@ -130,29 +128,29 @@ def create_app(
     router = APIRouter(prefix=f"/{party}")
 
     @router.get("/channels", response_model_exclude_none=True)
-    def channels() -> list[GwWeatherChannelGt]:
+    def channels() -> list[WeatherChannelGt]:
         """The observed-series channel records."""
         return reads.channels()
 
     @router.get("/forecast-channels", response_model_exclude_none=True)
-    def forecast_channels() -> list[GwWeatherForecastChannelGt]:
+    def forecast_channels() -> list[WeatherForecastChannelGt]:
         """The forecast channel records (predictor + shape + slice grid)."""
         return reads.forecast_channels()
 
     @router.get("/bundles", response_model_exclude_none=True)
-    def bundles() -> list[GwWeatherForecastBundleGt]:
+    def bundles() -> list[WeatherForecastBundleGt]:
         """The forecast bundle records — the sign-up objects."""
         return reads.bundles()
 
     @router.get("/locations", response_model_exclude_none=True)
-    def locations() -> list[GwWeatherLocationGt]:
+    def locations() -> list[WeatherLocationGt]:
         """The place-anchor records."""
         return reads.locations()
 
     @router.get(
         "/latest-observation/{location_alias}", response_model_exclude_none=True
     )
-    def latest_observation(location_alias: LeftRightDot) -> GwWeatherObservation:
+    def latest_observation(location_alias: LeftRightDot) -> WeatherObservation:
         """The last real observation for a location (404 if none stored)."""
         message = reads.latest_observation(location_alias)
         if message is None:
@@ -162,7 +160,7 @@ def create_app(
         return message
 
     @router.get("/latest-forecast/{bundle_name}", response_model_exclude_none=True)
-    def latest_forecast(bundle_name: LeftRightDot) -> GwWeatherForecast:
+    def latest_forecast(bundle_name: LeftRightDot) -> WeatherForecast:
         """The newest sent forecast for a bundle (404 if none stored)."""
         message = reads.latest_forecast(bundle_name)
         if message is None:

@@ -15,16 +15,16 @@ from gwwf.scheduler import (
     ObservationStream,
 )
 from gwwf.sema.enums import (
-    Gw1Quantity,
-    Gw1Unit,
-    GwWeatherForecastFidelity,
+    Quantity,
+    Unit,
+    WeatherForecastFidelity,
     LogLevel,
 )
 from gwwf.sema.types import (
-    GwWeatherChannelGt,
-    GwWeatherForecastBundleGt,
-    GwWeatherForecastChannelGt,
-    GwWeatherObservation,
+    WeatherChannelGt,
+    WeatherForecastBundleGt,
+    WeatherForecastChannelGt,
+    WeatherObservation,
 )
 
 LOCATION = "d1.test.loc"
@@ -34,22 +34,22 @@ TEMP_FC = "d1.test.loc.temperature.forecast.fake.hourly"
 WIND_FC = "d1.test.loc.windspeed.forecast.fake.hourly"
 BUNDLE_NAME = "d1.test.loc.forecast.fake.hourly"
 
-TEMP_CH = GwWeatherChannelGt(
+TEMP_CH = WeatherChannelGt(
     name=TEMP,
     display_name="test temperature",
-    quantity=Gw1Quantity.Temperature,
-    unit=Gw1Unit.FahrenheitX100,
+    quantity=Quantity.Temperature,
+    unit=Unit.FahrenheitX100,
     location_alias=LOCATION,
     emit_period_s=60,
     emit_offset_s=0,
     start="2026-08-11T00:00:00Z",
     id="6ffaacf0-701d-49d8-a20b-cd89de9a21ea",
 )
-WIND_CH = GwWeatherChannelGt(
+WIND_CH = WeatherChannelGt(
     name=WIND,
     display_name="test wind",
-    quantity=Gw1Quantity.WindSpeed,
-    unit=Gw1Unit.MilesPerHourX1000,
+    quantity=Quantity.WindSpeed,
+    unit=Unit.MilesPerHourX1000,
     location_alias=LOCATION,
     emit_period_s=60,
     emit_offset_s=0,
@@ -58,8 +58,8 @@ WIND_CH = GwWeatherChannelGt(
 )
 
 
-def forecast_channel(name: str, target: str, cid: str) -> GwWeatherForecastChannelGt:
-    return GwWeatherForecastChannelGt(
+def forecast_channel(name: str, target: str, cid: str) -> WeatherForecastChannelGt:
+    return WeatherForecastChannelGt(
         name=name,
         target_channel_name=target,
         forecaster="fake.model",
@@ -72,7 +72,7 @@ def forecast_channel(name: str, target: str, cid: str) -> GwWeatherForecastChann
     )
 
 
-BUNDLE = GwWeatherForecastBundleGt(
+BUNDLE = WeatherForecastBundleGt(
     name=BUNDLE_NAME,
     display_name="test bundle",
     location_alias=LOCATION,
@@ -91,8 +91,8 @@ BUNDLE = GwWeatherForecastBundleGt(
 )
 
 
-def obs_at(epoch_s: int, temp: int, wind: int | None = None) -> GwWeatherObservation:
-    return GwWeatherObservation(
+def obs_at(epoch_s: int, temp: int, wind: int | None = None) -> WeatherObservation:
+    return WeatherObservation(
         location_alias=LOCATION,
         observation_time=s_to_iso(epoch_s),
         interpolated=False,
@@ -123,7 +123,7 @@ class Harness:
         observations: list | None = None,
         products: list | None = None,
         max_fill_s: int = 3 * 3600,
-        initial_observation: GwWeatherObservation | None = None,
+        initial_observation: WeatherObservation | None = None,
         initial_published_slot: int | None = None,
         now_s: int = 0,
     ) -> None:
@@ -166,7 +166,7 @@ class Harness:
             **streams,
         )
 
-    def _next_obs(self) -> GwWeatherObservation:
+    def _next_obs(self) -> WeatherObservation:
         item = self._observations.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -271,7 +271,7 @@ def test_forecast_live_emits_one_bundle_message_on_channel_grid() -> None:
     message, radio = h.published[0]
     assert radio == BUNDLE_NAME
     assert message.bundle_name == BUNDLE_NAME
-    assert message.fidelity == GwWeatherForecastFidelity.Live
+    assert message.fidelity == WeatherForecastFidelity.Live
     assert message.source_updated_time == s_to_iso(B)
     assert message.message_created_ms == (B + 90) * 1000
     # First slice: next 300-boundary after the slot → B+300; starts
@@ -287,7 +287,7 @@ def test_forecast_falls_back_to_stored_with_downgrade_glitch() -> None:
     h.scheduler.run_pending(B + 90)
     h.scheduler.run_pending(B + 150)
     assert len(h.published) == 2
-    assert h.published[1][0].fidelity == GwWeatherForecastFidelity.Stored
+    assert h.published[1][0].fidelity == WeatherForecastFidelity.Stored
     assert len(h.glitches) == 1
     assert h.glitches[0][0] == LogLevel.Warning
     assert "downgrade" in h.glitches[0][1]
