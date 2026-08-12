@@ -1,112 +1,210 @@
-"""WeatherActor — like-for-like port of gjk/weather_service.py onto gwbase 0.4.0.
+"""WeatherActor — gwwf's emission actor.
 
-Polls NWS for the latest KMLT observation every 10 minutes and broadcasts a
-`weather` v000 message. 
+Boots from the gridworks-weather DB: the bundle loads back as a
+validated record reconstructed FROM the canonical channel rows (its
+axioms fire on load — the service-side half of the bundle contract;
+seeding is an explicit operator step, `gwwf seed`, and an unseeded DB
+refuses to boot), scheduler state restores from the DB (last
+observation, stored product), and emissions persist as they happen:
+sent forecasts from the publish hook, the source product through a
+caching fetch wrapper, last-observation state on publish. Fetchers
+are injectable for harnesses; the defaults are the NWS adapters wired
+from the records themselves (station from the location's IcaoId,
+gridpoint from the forecast channel's SourceLocator). Broadcast radio
+channels: observations ride the location alias, forecasts the bundle
+Name; glitches ride un-channeled.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 import threading
 import time
-from typing import Any
+from typing import Callable
 
-import pendulum
-import requests
 from gwbase.gridworks_actor import GridworksActor
-from gwbase.transport_encoding import RoutingEnvelope
-from result import Err, Ok, Result
+from gwbase.transport_encoding import RoutingEnvelope, TransportClass
 
 from gwwf.config import GwwfSettings
-from gwwf.sema.types import Weather
+from gwwf.db.session import session_factory_from
+from gwwf.db.store import (
+    load_bundles,
+    load_last_observation,
+    load_locations,
+    load_product,
+    save_last_observation,
+    save_product,
+    store_forecast,
+)
+from gwwf.nws import (
+    HourlyForecastProduct,
+    fetch_hourly_product,
+    fetch_latest_observation,
+    gridpoint_from_locator,
+)
+from gwwf.scheduler import (
+    EmissionScheduler,
+    ForecastStream,
+    ObservationStream,
+    WeatherMessage,
+)
+from gwwf.sema.enums import Gw1Unit, LogLevel
+from gwwf.sema.types import (
+    Glitch,
+    GwWeatherForecast,
+    GwWeatherForecastBundleGt,
+    GwWeatherLocationGt,
+    GwWeatherObservation,
+)
 
-LOGGER = logging.getLogger(__name__)
+GLITCH_NODE = "scheduler"
+TICK_S = 1.0
 
-KMLT_STATION = "KMLT"  # Millinocket, ME — ICAO
-WEATHER_CHANNEL = "weather.gov.kmlt"
-BASE_URL = "https://api.weather.gov"
-CHECK_INTERVAL_SECONDS = 600  # 10 minutes
-
-
-class WeatherResult:
-    def __init__(
-        self,
-        success: bool,
-        value: dict[str, Any] | None = None,
-        error: str | None = None,
-    ) -> None:
-        self.success = success
-        self.value = value
-        self.error = error
-
-
-def safe_get_nested(d: dict[str, Any] | Any, *keys: Any) -> Any | None:
-    curr: Any = d
-    for key in keys:
-        if isinstance(key, int):
-            if not isinstance(curr, list) or not curr or abs(key) > len(curr):
-                return None
-            curr = curr[key]
-        else:
-            if not isinstance(curr, dict) or key not in curr:
-                return None
-            curr = curr[key]
-    return curr
-
-
-def c_to_f(temp_c: float | None) -> float | None:
-    if temp_c is None:
-        return None
-    return round((temp_c * 9 / 5) + 32, 2)
-
-
-def kmph_to_mph(speed_kmph: float | None) -> float | None:
-    if speed_kmph is None:
-        return None
-    return round(speed_kmph * 0.621371, 2)
-
-
-def get_latest_observation() -> Result[WeatherResult, Exception]:
-    """True iff a reported observation with timestamp + temp arrived in the
-    last 2 hours."""
-    try:
-        url = f"{BASE_URL}/stations/{KMLT_STATION}/observations"
-        start = pendulum.now("UTC").subtract(hours=2)
-        end = pendulum.now("UTC").add(minutes=5)
-        params = {
-            "start": start.to_iso8601_string(),
-            "end": end.to_iso8601_string(),
-        }
-        response = requests.get(url, params=params, timeout=30)
-        if response.status_code != 200:
-            return Ok(WeatherResult(False, error=f"NWS HTTP {response.status_code}"))
-        data = response.json()
-        if not safe_get_nested(data, "features"):
-            return Ok(WeatherResult(False, error="no observations received"))
-        latest = safe_get_nested(data, "features", -1, "properties")
-        if not latest:
-            return Ok(WeatherResult(False, error="no properties in latest"))
-        if safe_get_nested(latest, "temperature", "value") is None:
-            return Ok(WeatherResult(False, error="no temperature in latest"))
-        if not safe_get_nested(latest, "timestamp"):
-            return Ok(WeatherResult(False, error="no timestamp in latest"))
-        return Ok(WeatherResult(True, value=latest))
-    except Exception as e:
-        return Err(e)
+# Adapter-level mapping from a channel's Unit to the scale applied to
+# the NWS product's natural units (°F, mph). Retires when a
+# unit-metadata word drives conversion generically.
+UNIT_SCALE: dict[Gw1Unit, int] = {
+    Gw1Unit.FahrenheitX100: 100,
+    Gw1Unit.MilesPerHourX1000: 1000,
+}
 
 
 class WeatherActor(GridworksActor):
-    """Polls NWS and broadcasts `weather` v000 every 10 minutes."""
+    """Emits the weather streams on the DB records' schedule."""
 
-    def __init__(self, settings: GwwfSettings) -> None:
+    def __init__(
+        self,
+        settings: GwwfSettings,
+        *,
+        fetch_observation: Callable[[], GwWeatherObservation] | None = None,
+        fetch_product: Callable[[int], HourlyForecastProduct] | None = None,
+    ) -> None:
         super().__init__(
             settings=settings,
+            transport_class=TransportClass.WeatherForecastService,
             my_super_alias=settings.my_super_alias,
             my_time_coordinator_alias=settings.my_time_coordinator_alias,
         )
         self.settings: GwwfSettings = settings
+        self._sessions = session_factory_from(settings)
+
+        with self._sessions() as session:
+            bundles = load_bundles(session)
+            if len(bundles) != 1:
+                raise ValueError(
+                    f"expected exactly one bundle in the gridworks-weather DB, "
+                    f"got {len(bundles)}; seed first: gwwf seed"
+                )
+            bundle = bundles[0]
+            locations = {loc.alias: loc for loc in load_locations(session)}
+            location = locations[bundle.location_alias]
+            self._method = bundle.temp_forecast_channel.method
+            self._source_locator = bundle.temp_forecast_channel.source_locator
+            stored_observation = load_last_observation(session, location.alias)
+            stored_product = load_product(
+                session, method=self._method, source_locator=self._source_locator or ""
+            )
+
+        observation_channels = [
+            bundle.temp_observation_channel,
+            bundle.wind_speed_observation_channel,
+        ]
+        if fetch_observation is None:
+            fetch_observation = self._nws_observation_fetch(location, bundle)
+        if fetch_product is None:
+            fetch_product = self._nws_product_fetch()
+        fetch_product = self._caching_product_fetch(fetch_product)
+
+        self.scheduler = EmissionScheduler(
+            observation_streams=[
+                ObservationStream(
+                    channels=observation_channels,
+                    fetch=fetch_observation,
+                    initial_observation=(
+                        stored_observation.observation if stored_observation else None
+                    ),
+                    initial_published_slot=(
+                        stored_observation.published_slot
+                        if stored_observation
+                        else None
+                    ),
+                )
+            ],
+            forecast_streams=[
+                ForecastStream(
+                    bundle=bundle,
+                    fetch=fetch_product,
+                    temp_scale=UNIT_SCALE[bundle.temp_observation_channel.unit],
+                    wind_speed_scale=UNIT_SCALE[
+                        bundle.wind_speed_observation_channel.unit
+                    ],
+                    initial_product=stored_product,
+                )
+            ],
+            publish=self._publish_stream,
+            raise_glitch=self._raise_glitch,
+            now_s=int(time.time()),
+            on_observation_published=self._observation_published,
+        )
         self.main_thread = threading.Thread(target=self.main, daemon=True)
+
+    # ------------------------------------------------------------------
+    # Default NWS wiring (from the records themselves)
+    # ------------------------------------------------------------------
+
+    def _nws_observation_fetch(
+        self,
+        location: GwWeatherLocationGt,
+        bundle: GwWeatherForecastBundleGt,
+    ) -> Callable[[], GwWeatherObservation]:
+        if location.icao_id is None:
+            raise ValueError(
+                f"{location.alias}: no IcaoId on the location record; "
+                "cannot fetch NWS observations"
+            )
+        station = location.icao_id
+        temperature = bundle.temp_observation_channel
+        windspeed = bundle.wind_speed_observation_channel
+
+        def fetch() -> GwWeatherObservation:
+            return fetch_latest_observation(
+                station=station,
+                location_alias=location.alias,
+                temperature_channel=temperature.name,
+                windspeed_channel=windspeed.name,
+            )
+
+        return fetch
+
+    def _nws_product_fetch(self) -> Callable[[int], HourlyForecastProduct]:
+        if self._source_locator is None:
+            raise ValueError(f"{self._method}: no SourceLocator on the record")
+        gridpoint = gridpoint_from_locator(self._source_locator)
+
+        def fetch(slices: int) -> HourlyForecastProduct:
+            return fetch_hourly_product(gridpoint=gridpoint, slices=slices)
+
+        return fetch
+
+    def _caching_product_fetch(
+        self, fetch: Callable[[int], HourlyForecastProduct]
+    ) -> Callable[[int], HourlyForecastProduct]:
+        def caching(slices: int) -> HourlyForecastProduct:
+            product = fetch(slices)
+            with self._sessions() as session:
+                save_product(
+                    session,
+                    method=self._method,
+                    source_locator=self._source_locator or "",
+                    product=product,
+                )
+            return product
+
+        return caching
+
+    # ------------------------------------------------------------------
+    # Actor lifecycle
+    # ------------------------------------------------------------------
 
     def local_start(self) -> None:
         self._main_loop_running = True
@@ -116,97 +214,56 @@ class WeatherActor(GridworksActor):
         self._main_loop_running = False
         self.main_thread.join()
 
-    def process_message(
-        self, *, envelope: RoutingEnvelope, body: bytes
-    ) -> None:
+    def process_message(self, *, envelope: RoutingEnvelope, body: bytes) -> None:
         # No inbound app traffic to handle today.
-        LOGGER.debug(
+        self.logger.debug(
             "Ignored unexpected %s from %s", envelope.type_name, envelope.from_alias
         )
 
-    # ------------------------------------------------------------------
-    # Polling loop
-    # ------------------------------------------------------------------
-
-    def _build_weather(self, observation: dict[str, Any]) -> Weather | None:
-        try:
-            timestamp_str = safe_get_nested(observation, "timestamp")
-            if not timestamp_str:
-                LOGGER.warning("no timestamp in observation; skipping")
-                return None
-            obs_time = pendulum.parse(timestamp_str)
-            unix_s = int(obs_time.timestamp())
-
-            temp_units = safe_get_nested(observation, "temperature", "unitCode")
-            if temp_units != "wmoUnit:degC":
-                LOGGER.warning("unexpected temp units %s; skipping", temp_units)
-                return None
-            temp_f = c_to_f(safe_get_nested(observation, "temperature", "value"))
-
-            wind_units = safe_get_nested(observation, "windSpeed", "unitCode")
-            if wind_units != "wmoUnit:km_h-1":
-                LOGGER.warning("unexpected wind units %s; skipping", wind_units)
-                return None
-            wind_mph = kmph_to_mph(safe_get_nested(observation, "windSpeed", "value"))
-
-            if temp_f is None:
-                LOGGER.warning("temperature reading was None")
-                return None
-
-            return Weather(
-                from_g_node_alias=self.alias,
-                weather_channel_name=WEATHER_CHANNEL,
-                outside_air_temp_f=temp_f,
-                wind_speed_mph=wind_mph,
-                unix_time_s=unix_s,
-            )
-        except Exception as e:
-            LOGGER.error("failed to build Weather payload: %r", e)
-            return None
-
-    def _publish(self, weather: Weather) -> None:
-        envelope = self.broadcast_envelope(type_name=weather.type_name)
-        body = json.dumps(weather.to_dict()).encode("utf-8")
-        self.send(envelope=envelope, body=body)
-
     def main(self) -> None:
-        last_obs_time: pendulum.DateTime | None = None
-        time.sleep(1)
         while self._main_loop_running:
             try:
-                result = get_latest_observation()
-                if isinstance(result, Err):
-                    LOGGER.error("observation fetch failed: %r", result.err())
-                    time.sleep(60)
-                    continue
-                wr = result.unwrap()
-                if not wr.success:
-                    LOGGER.info("no fresh observation: %s", wr.error)
-                    time.sleep(CHECK_INTERVAL_SECONDS)
-                    continue
+                self.scheduler.run_pending(int(time.time()))
+            except Exception:  # noqa: BLE001 -- the loop must survive anything
+                self.logger.exception("scheduler tick failed")
+            time.sleep(TICK_S)
 
-                obs = wr.value
-                assert obs is not None  # success implies value present
-                current_obs_time = pendulum.parse(obs["timestamp"])
-                if last_obs_time is None or current_obs_time > last_obs_time:
-                    last_obs_time = current_obs_time
-                    weather = self._build_weather(obs)
-                    if weather is None:
-                        time.sleep(CHECK_INTERVAL_SECONDS)
-                        continue
-                    et = pendulum.from_timestamp(
-                        weather.unix_time_s, tz="America/New_York"
-                    )
-                    LOGGER.info(
-                        "[%s ET] %s: %.2f°F, %s mph",
-                        et.format("YYYY-MM-DD HH:mm:ss"),
-                        WEATHER_CHANNEL,
-                        weather.outside_air_temp_f,
-                        weather.wind_speed_mph,
-                    )
-                    self._publish(weather)
+    # ------------------------------------------------------------------
+    # Scheduler hooks
+    # ------------------------------------------------------------------
 
-                time.sleep(CHECK_INTERVAL_SECONDS)
-            except Exception as e:
-                LOGGER.exception("main loop error: %r", e)
-                time.sleep(60)
+    def _publish_stream(self, message: WeatherMessage, radio_channel: str) -> None:
+        envelope = self.broadcast_envelope(
+            type_name=message.type_name, radio_channel=radio_channel
+        )
+        self.send(envelope=envelope, body=json.dumps(message.to_dict()).encode("utf-8"))
+        self.logger.info(
+            "published %s", envelope.routing_key, extra={"radio": radio_channel}
+        )
+        if isinstance(message, GwWeatherForecast):
+            with self._sessions() as session:
+                store_forecast(session, message)
+
+    def _observation_published(
+        self, location_alias: str, observation: GwWeatherObservation, slot_s: int
+    ) -> None:
+        with self._sessions() as session:
+            save_last_observation(
+                session,
+                location_alias=location_alias,
+                observation=observation,
+                published_slot=slot_s,
+            )
+
+    def _raise_glitch(self, level: LogLevel, summary: str, details: str) -> None:
+        glitch = Glitch(
+            from_g_node_alias=self.alias,
+            node=GLITCH_NODE,
+            type=level,
+            summary=summary,
+            details=details,
+            created_ms=int(time.time() * 1000),
+        )
+        envelope = self.broadcast_envelope(type_name=glitch.type_name)
+        self.send(envelope=envelope, body=json.dumps(glitch.to_dict()).encode("utf-8"))
+        self.logger.warning("glitch: %s — %s", summary, details)

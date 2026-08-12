@@ -1,12 +1,79 @@
 # GENERATED FILE - DO NOT EDIT
 # Generated from definitions/registry.yaml
 
-types: {}
-enums: {}
+types:
+  gw.weather.channel.gt:
+    '000':
+      used_by:
+      - gw.weather.forecast.bundle.gt:000
+  gw.weather.forecast.channel.gt:
+    '000':
+      used_by:
+      - gw.weather.forecast.bundle.gt:000
+enums:
+  gw.weather.forecast.fidelity:
+    '000':
+      used_by:
+      - gw.weather.forecast:000
+  gw1.quantity:
+    '002':
+      used_by:
+      - gw.weather.channel.gt:000
+      - gw.weather.forecast.bundle.gt:000
+  gw1.unit:
+    '002':
+      used_by:
+      - gw.weather.channel.gt:000
+  log.level:
+    '000':
+      used_by:
+      - glitch:000
 formats:
   left.right.dot:
     used_by:
+    - glitch:000
+    - gw.weather.channel.gt:000
+    - gw.weather.forecast.bundle.gt:000
+    - gw.weather.forecast.channel.gt:000
+    - gw.weather.forecast:000
+    - gw.weather.location.gt:000
+    - gw.weather.observation:000
     - weather:000
+  non.empty.string:
+    used_by:
+    - gw.weather.channel.gt:000
+    - gw.weather.forecast.bundle.gt:000
+    - gw.weather.forecast.channel.gt:000
+    - gw.weather.location.gt:000
+  non.negative.int:
+    used_by:
+    - gw.weather.channel.gt:000
+    - gw.weather.forecast.bundle.gt:000
+  positive.int:
+    used_by:
+    - gw.weather.channel.gt:000
+    - gw.weather.forecast.bundle.gt:000
+    - gw.weather.forecast.channel.gt:000
+  spaceheat.name:
+    used_by:
+    - glitch:000
+  utc.iso8601.seconds:
+    used_by:
+    - gw.weather.channel.gt:000
+    - gw.weather.forecast.bundle.gt:000
+    - gw.weather.forecast.channel.gt:000
+    - gw.weather.forecast:000
+    - gw.weather.observation:000
+  utc.milliseconds:
+    used_by:
+    - glitch:000
+    - gw.weather.forecast:000
   utc.seconds:
     used_by:
     - weather:000
+  uuid4.str:
+    used_by:
+    - gw.weather.channel.gt:000
+    - gw.weather.forecast.bundle.gt:000
+    - gw.weather.forecast.channel.gt:000
+    - gw.weather.location.gt:000

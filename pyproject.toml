@@ -14,14 +14,22 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "gridworks-base>=0.4.0",
+    "gridworks-base>=0.5.8",
     "pydantic>=2.8.2",
     "pydantic-settings>=2.3.4",
     "python-dotenv>=1.0.0",
     "pendulum>=3.0.0",
     "requests>=2.32.3",
     "result>=0.17.0",
+    "sqlalchemy>=2.0.44",
+    "alembic>=1.17.2",
+    "psycopg[binary]>=3.1",
+    "fastapi>=0.123.0",
+    "uvicorn[standard]>=0.38.0",
 ]
+
+[project.scripts]
+gwwf = "gwwf.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/thegridelectric/gridworks-weather-forecast"
@@ -41,6 +49,13 @@ dev = [
     "ruff>=0.5.6",
     "pre-commit>=3.7",
     "types-requests>=2.32",
+    "testcontainers[postgres,rabbitmq]>=4.0",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: boots the real actor on testcontainers rabbit + postgres",
 ]
 
 [tool.mypy]
@@ -78,3 +93,5 @@ preview = true
 "tests/**/*.py" = [
     "S101",
 ]
+# alembic's env.py must import after its sys.path insert.
+"alembic/env.py" = ["E402"]

@@ -3,7 +3,7 @@ import logging
 from importlib import import_module
 from collections import defaultdict
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeVar, overload
 
 
 from gwwf.sema.base import (
@@ -16,9 +16,10 @@ from gwwf.sema.base import (
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T", bound=SemaType)
+
 
 class SemaCodec:
-
     def __init__(self) -> None:
         self.registry = get_current_types()
         self.old_versions = get_old_versions()
@@ -27,13 +28,74 @@ class SemaCodec:
     # Decode
     # ------------------------------------------------------------------------
 
+    @overload
     def from_dict(
         self,
         data: dict,
         mode: Literal["strict", "degraded"] = "strict",
-        auto_upgrade: bool = True
-    ) -> SemaType | DegradedSemaType:
+        auto_upgrade: bool = True,
+        *,
+        expect: type[T],
+    ) -> T: ...
 
+    @overload
+    def from_dict(
+        self,
+        data: dict,
+        mode: Literal["strict", "degraded"] = "strict",
+        auto_upgrade: bool = True,
+        expect: None = None,
+    ) -> SemaType | DegradedSemaType: ...
+
+    def from_dict(
+        self,
+        data: dict,
+        mode: Literal["strict", "degraded"] = "strict",
+        auto_upgrade: bool = True,
+        expect: type[T] | None = None,
+    ) -> SemaType | DegradedSemaType:
+        decoded = self._decode(data, mode, auto_upgrade)
+        if expect is not None and not isinstance(decoded, expect):
+            raise ValueError(
+                f"decoded {type(decoded).__name__}, expected {expect.__name__}"
+            )
+        return decoded
+
+    @overload
+    def from_file(
+        self,
+        path: str | Path,
+        mode: Literal["strict", "degraded"] = "strict",
+        auto_upgrade: bool = True,
+        *,
+        expect: type[T],
+    ) -> T: ...
+
+    @overload
+    def from_file(
+        self,
+        path: str | Path,
+        mode: Literal["strict", "degraded"] = "strict",
+        auto_upgrade: bool = True,
+        expect: None = None,
+    ) -> SemaType | DegradedSemaType: ...
+
+    def from_file(
+        self,
+        path: str | Path,
+        mode: Literal["strict", "degraded"] = "strict",
+        auto_upgrade: bool = True,
+        expect: type[T] | None = None,
+    ) -> SemaType | DegradedSemaType:
+        with open(path) as f:
+            return self.from_dict(json.load(f), mode, auto_upgrade, expect=expect)
+
+    def _decode(
+        self,
+        data: dict,
+        mode: Literal["strict", "degraded"] = "strict",
+        auto_upgrade: bool = True,
+    ) -> SemaType | DegradedSemaType:
         if not isinstance(data, dict):
             raise ValueError("Input must be dict")
 
@@ -65,19 +127,16 @@ class SemaCodec:
             return current_cls.from_dict(data)
 
         # Old version
-        if (
-            type_name in self.old_versions
-            and version in self.old_versions[type_name]
-        ):
+        if type_name in self.old_versions and version in self.old_versions[type_name]:
             old_cls = self.old_versions[type_name][version]
             old_instance = old_cls.from_dict(data)
-            return old_instance.to_latest(self.registry) if auto_upgrade else old_instance
+            return (
+                old_instance.to_latest(self.registry) if auto_upgrade else old_instance
+            )
 
         # Unknown version
         if mode == "strict":
-            raise ValueError(
-                f"Unsupported version {version} for {type_name}"
-            )
+            raise ValueError(f"Unsupported version {version} for {type_name}")
 
         # --------------------------------------------------------------------
         # DEGRADED MODE
@@ -119,7 +178,6 @@ class SemaCodec:
         data: bytes,
         mode: Literal["strict", "degraded"] = "strict",
     ) -> SemaType | DegradedSemaType:
-
         try:
             d = json.loads(data.decode("utf-8"))
         except Exception as e:
@@ -135,8 +193,10 @@ class SemaCodec:
 # AUTO-DISCOVERY
 # ============================================================================
 
+
 def get_current_types() -> dict[str, type[SemaType]]:
     from gwwf.sema import types
+
     return {
         getattr(types, name).type_name_value(): getattr(types, name)
         for name in types.__all__

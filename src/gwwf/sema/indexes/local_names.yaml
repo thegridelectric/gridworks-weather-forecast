@@ -1,3 +1,14 @@
-enums: {}
+enums:
+  gw.weather.forecast.fidelity: gw.weather.forecast.fidelity
+  gw1.quantity: gw1.quantity
+  gw1.unit: gw1.unit
+  log.level: log.level
 types:
+  glitch: glitch
+  gw.weather.channel.gt: gw.weather.channel.gt
+  gw.weather.forecast: gw.weather.forecast
+  gw.weather.forecast.bundle.gt: gw.weather.forecast.bundle.gt
+  gw.weather.forecast.channel.gt: gw.weather.forecast.channel.gt
+  gw.weather.location.gt: gw.weather.location.gt
+  gw.weather.observation: gw.weather.observation
   weather: weather
