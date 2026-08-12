@@ -1,5 +1,0 @@
-staging: true
-staging_words:
-- type gw.weather.cmd.ack:000
-- type gw.weather.cmd.nack:000
-- type gw.weather.create.cmd:000
