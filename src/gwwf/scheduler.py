@@ -39,22 +39,22 @@ from gwwf.grid import (
     slots_between,
 )
 from gwwf.nws import HourlyForecastProduct
-from gwwf.sema.enums import GwWeatherForecastFidelity, LogLevel
+from gwwf.sema.enums import WeatherForecastFidelity, LogLevel
 from gwwf.sema.types import (
-    GwWeatherChannelGt,
-    GwWeatherForecast,
-    GwWeatherForecastBundleGt,
-    GwWeatherObservation,
+    WeatherChannelGt,
+    WeatherForecast,
+    WeatherForecastBundleGt,
+    WeatherObservation,
 )
 
-WeatherMessage = GwWeatherObservation | GwWeatherForecast
+WeatherMessage = WeatherObservation | WeatherForecast
 Publisher = Callable[[WeatherMessage, str], None]  # (message, radio_channel)
 GlitchRaiser = Callable[[LogLevel, str, str], None]  # (level, summary, details)
 
 _FIDELITY_RANK = {
-    GwWeatherForecastFidelity.Live: 0,
-    GwWeatherForecastFidelity.Stored: 1,
-    GwWeatherForecastFidelity.SeasonalTemplate: 2,
+    WeatherForecastFidelity.Live: 0,
+    WeatherForecastFidelity.Stored: 1,
+    WeatherForecastFidelity.SeasonalTemplate: 2,
 }
 
 
@@ -68,9 +68,9 @@ class ObservationStream(NamedTuple):
     loads them from the DB; the scheduler itself stays storage-free).
     """
 
-    channels: list[GwWeatherChannelGt]
-    fetch: Callable[[], GwWeatherObservation]
-    initial_observation: GwWeatherObservation | None = None
+    channels: list[WeatherChannelGt]
+    fetch: Callable[[], WeatherObservation]
+    initial_observation: WeatherObservation | None = None
     initial_published_slot: int | None = None
 
 
@@ -84,7 +84,7 @@ class ForecastStream(NamedTuple):
     ``initial_product`` restores the stored rung across a restart.
     """
 
-    bundle: GwWeatherForecastBundleGt
+    bundle: WeatherForecastBundleGt
     fetch: Callable[[int], HourlyForecastProduct]  # (slices) -> product
     temp_scale: int
     wind_speed_scale: int
@@ -94,7 +94,7 @@ class ForecastStream(NamedTuple):
 @dataclass
 class _ObservationState:
     last_slot: int
-    last_real: GwWeatherObservation | None = None
+    last_real: WeatherObservation | None = None
     # The slot at which last_real was published: replay fills only
     # slots after it (that slot itself carried the real message).
     published_slot: int | None = None
@@ -104,10 +104,10 @@ class _ObservationState:
 class _ForecastState:
     last_slot: int
     stored: HourlyForecastProduct | None = None
-    last_fidelity: GwWeatherForecastFidelity | None = None
+    last_fidelity: WeatherForecastFidelity | None = None
 
 
-def _schedule(channels: Sequence[GwWeatherChannelGt]) -> tuple[int, int]:
+def _schedule(channels: Sequence[WeatherChannelGt]) -> tuple[int, int]:
     periods = {(c.emit_period_s, c.emit_offset_s) for c in channels}
     if len(periods) != 1:
         raise ValueError(f"channels disagree on emit schedule: {periods}")
@@ -126,7 +126,7 @@ class EmissionScheduler:
         stale_after_s: int = 3600,
         max_fill_s: int = 3 * 3600,
         stored_horizon_slices: int = 24,
-        on_observation_published: Callable[[str, GwWeatherObservation, int], None]
+        on_observation_published: Callable[[str, WeatherObservation, int], None]
         | None = None,
     ) -> None:
         for stream in observation_streams:
@@ -228,8 +228,8 @@ class EmissionScheduler:
         self,
         period_s: int,
         offset_s: int,
-        previous: GwWeatherObservation,
-        current: GwWeatherObservation,
+        previous: WeatherObservation,
+        current: WeatherObservation,
         published_slot: int,
     ) -> None:
         """Interpolated messages for grid points missed between two reals.
@@ -268,7 +268,7 @@ class EmissionScheduler:
                     v1=current.wind_speed_value,
                 )
             self._publish(
-                GwWeatherObservation(
+                WeatherObservation(
                     location_alias=current.location_alias,
                     observation_time=s_to_iso(slot),
                     interpolated=True,
@@ -295,7 +295,7 @@ class EmissionScheduler:
     ) -> None:
         bundle = stream.bundle
         horizon = bundle.temp_forecast_channel.total_slices
-        fidelity = GwWeatherForecastFidelity.Live
+        fidelity = WeatherForecastFidelity.Live
         try:
             product = stream.fetch(horizon + self._stored_horizon_slices)
             state.stored = product
@@ -308,7 +308,7 @@ class EmissionScheduler:
                 )
                 return
             product = state.stored
-            fidelity = GwWeatherForecastFidelity.Stored
+            fidelity = WeatherForecastFidelity.Stored
         if (
             state.last_fidelity is not None
             and _FIDELITY_RANK[fidelity] > _FIDELITY_RANK[state.last_fidelity]
@@ -334,9 +334,9 @@ class EmissionScheduler:
         self,
         stream: ForecastStream,
         product: HourlyForecastProduct,
-        fidelity: GwWeatherForecastFidelity,
+        fidelity: WeatherForecastFidelity,
         slot_s: int,
-    ) -> GwWeatherForecast:
+    ) -> WeatherForecast:
         bundle = stream.bundle
         durations = bundle.temp_forecast_channel.slice_duration_s_list
         first_s = next_slot(slot_s, durations[0], 0)
@@ -354,7 +354,7 @@ class EmissionScheduler:
             source_period_s=product.period_s,
             source_values=product.wind_speed_mph,
         )
-        return GwWeatherForecast(
+        return WeatherForecast(
             bundle_name=bundle.name,
             source_updated_time=product.update_time,
             message_created_ms=slot_s * 1000,

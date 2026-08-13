@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 import uuid
 
-from gwwf import records
 from gwwf.db.models import (
     BundleSql,
     ForecastChannelSql,
@@ -28,14 +27,15 @@ from gwwf.db.models import (
     WeatherChannelSql,
 )
 from gwwf.nws import HourlyForecastProduct
+from gwwf.record_broadcast import RecordWord
 from gwwf.sema.codec import default_codec
 from gwwf.sema.types import (
-    GwWeatherChannelGt,
-    GwWeatherForecast,
-    GwWeatherForecastBundleGt,
-    GwWeatherForecastChannelGt,
-    GwWeatherLocationGt,
-    GwWeatherObservation,
+    WeatherChannelGt,
+    WeatherForecast,
+    WeatherForecastBundleGt,
+    WeatherForecastChannelGt,
+    WeatherLocationGt,
+    WeatherObservation,
 )
 
 
@@ -48,113 +48,112 @@ def _iso(dt: datetime) -> str:
 
 
 # ----------------------------------------------------------------------
-# Record seed + loads (the canonical .gt seed)
+# Record creation + loads (the canonical .gt seed)
 # ----------------------------------------------------------------------
 
 
-def seed_records(
-    session: Session,
-    *,
-    locations: list[GwWeatherLocationGt] | None = None,
-    observation_channels: list[GwWeatherChannelGt] | None = None,
-    forecast_channels: list[GwWeatherForecastChannelGt] | None = None,
-    bundles: list[GwWeatherForecastBundleGt] | None = None,
+def _record_row(
+    record: RecordWord,
+) -> LocationSql | WeatherChannelSql | ForecastChannelSql | BundleSql:
+    if isinstance(record, WeatherLocationGt):
+        return LocationSql(
+            id=record.id,
+            alias=record.alias,
+            latitude_microdegrees=record.latitude_microdegrees,
+            longitude_microdegrees=record.longitude_microdegrees,
+            timezone=record.timezone,
+            icao_id=record.icao_id,
+            wban_id=record.wban_id,
+            ghcn_id=record.ghcn_id,
+            coop_id=record.coop_id,
+        )
+    if isinstance(record, WeatherChannelGt):
+        return WeatherChannelSql(
+            id=record.id,
+            name=record.name,
+            display_name=record.display_name,
+            quantity=record.quantity,
+            unit=record.unit,
+            location_alias=record.location_alias,
+            emit_period_s=record.emit_period_s,
+            emit_offset_s=record.emit_offset_s,
+            start=_dt(record.start),
+        )
+    if isinstance(record, WeatherForecastChannelGt):
+        return ForecastChannelSql(
+            id=record.id,
+            name=record.name,
+            target_channel_name=record.target_channel_name,
+            forecaster=record.forecaster,
+            method=record.method,
+            source_locator=record.source_locator,
+            total_slices=record.total_slices,
+            slice_duration_s_list=record.slice_duration_s_list,
+            forecast_duration_minutes=record.forecast_duration_minutes,
+            start=_dt(record.start),
+        )
+    return BundleSql(
+        id=record.id,
+        name=record.name,
+        display_name=record.display_name,
+        location_alias=record.location_alias,
+        temp_forecast_channel_name=record.temp_forecast_channel.name,
+        temp_observation_channel_name=record.temp_observation_channel.name,
+        wind_speed_forecast_channel_name=record.wind_speed_forecast_channel.name,
+        wind_speed_observation_channel_name=(
+            record.wind_speed_observation_channel.name
+        ),
+        emit_period_s=record.emit_period_s,
+        emit_offset_s=record.emit_offset_s,
+        start=_dt(record.start),
+    )
+
+
+def _require_embedded_agreement(
+    session: Session, bundle: WeatherForecastBundleGt
 ) -> None:
-    """Upsert record instances into the record tables (default: the
-    in-code standup seed, `gwwf.records`).
-
-    Idempotent by id; the given seed is authoritative until a
-    registration surface exists, so an existing row is overwritten.
-    """
-    if locations is None:
-        locations = [records.MILLINOCKET_LOCATION]
-    if observation_channels is None:
-        observation_channels = records.OBSERVATION_CHANNELS
-    if forecast_channels is None:
-        forecast_channels = records.FORECAST_CHANNELS
-    if bundles is None:
-        bundles = records.FORECAST_BUNDLES
-    for location in locations:
-        values = dict(
-            id=location.id,
-            alias=location.alias,
-            latitude_microdegrees=location.latitude_microdegrees,
-            longitude_microdegrees=location.longitude_microdegrees,
-            timezone=location.timezone,
-            icao_id=location.icao_id,
-            wban_id=location.wban_id,
-            ghcn_id=location.ghcn_id,
-            coop_id=location.coop_id,
-        )
-        statement = pg_insert(LocationSql).values(**values)
-        session.execute(
-            statement.on_conflict_do_update(
-                index_elements=[LocationSql.id], set_=values
+    """The service-side half of the bundle contract, at create time:
+    the embedded channel copies must equal the canonical records."""
+    canonical: dict[str, WeatherChannelGt | WeatherForecastChannelGt] = {
+        c.name: c for c in load_weather_channels(session)
+    }
+    canonical.update({c.name: c for c in load_forecast_channels(session)})
+    for embedded in (
+        bundle.temp_forecast_channel,
+        bundle.temp_observation_channel,
+        bundle.wind_speed_forecast_channel,
+        bundle.wind_speed_observation_channel,
+    ):
+        stored = canonical.get(embedded.name)
+        if stored is None:
+            raise ValueError(
+                f"{embedded.name}: no canonical record — create the channel first"
             )
-        )
-    for channel in observation_channels:
-        values = dict(
-            id=channel.id,
-            name=channel.name,
-            display_name=channel.display_name,
-            quantity=channel.quantity,
-            unit=channel.unit,
-            location_alias=channel.location_alias,
-            emit_period_s=channel.emit_period_s,
-            emit_offset_s=channel.emit_offset_s,
-            start=_dt(channel.start),
-        )
-        statement = pg_insert(WeatherChannelSql).values(**values)
-        session.execute(
-            statement.on_conflict_do_update(
-                index_elements=[WeatherChannelSql.id], set_=values
+        if stored != embedded:
+            raise ValueError(
+                f"{embedded.name}: embedded copy disagrees with the canonical record"
             )
-        )
-    for forecast_channel in forecast_channels:
-        values = dict(
-            id=forecast_channel.id,
-            name=forecast_channel.name,
-            target_channel_name=forecast_channel.target_channel_name,
-            forecaster=forecast_channel.forecaster,
-            method=forecast_channel.method,
-            source_locator=forecast_channel.source_locator,
-            total_slices=forecast_channel.total_slices,
-            slice_duration_s_list=forecast_channel.slice_duration_s_list,
-            forecast_duration_minutes=forecast_channel.forecast_duration_minutes,
-            start=_dt(forecast_channel.start),
-        )
-        statement = pg_insert(ForecastChannelSql).values(**values)
-        session.execute(
-            statement.on_conflict_do_update(
-                index_elements=[ForecastChannelSql.id], set_=values
-            )
-        )
-    for bundle in bundles:
-        values = dict(
-            id=bundle.id,
-            name=bundle.name,
-            display_name=bundle.display_name,
-            location_alias=bundle.location_alias,
-            temp_forecast_channel_name=bundle.temp_forecast_channel.name,
-            temp_observation_channel_name=bundle.temp_observation_channel.name,
-            wind_speed_forecast_channel_name=bundle.wind_speed_forecast_channel.name,
-            wind_speed_observation_channel_name=(
-                bundle.wind_speed_observation_channel.name
-            ),
-            emit_period_s=bundle.emit_period_s,
-            emit_offset_s=bundle.emit_offset_s,
-            start=_dt(bundle.start),
-        )
-        statement = pg_insert(BundleSql).values(**values)
-        session.execute(
-            statement.on_conflict_do_update(index_elements=[BundleSql.id], set_=values)
-        )
-    session.commit()
 
 
-def load_locations(session: Session) -> list[GwWeatherLocationGt]:
+def insert_record(session: Session, record: RecordWord) -> None:
+    """Insert-only create — records are durable identities, never
+    upserted. A duplicate id/name or a missing reference (referential
+    order: location → channels → bundle) raises IntegrityError; a
+    bundle whose embedded channel copies disagree with the canonical
+    rows raises ValueError before anything is written."""
+    if isinstance(record, WeatherForecastBundleGt):
+        _require_embedded_agreement(session, record)
+    session.add(_record_row(record))
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+
+def load_locations(session: Session) -> list[WeatherLocationGt]:
     return [
-        GwWeatherLocationGt(
+        WeatherLocationGt(
             alias=row.alias,
             latitude_microdegrees=row.latitude_microdegrees,
             longitude_microdegrees=row.longitude_microdegrees,
@@ -169,9 +168,9 @@ def load_locations(session: Session) -> list[GwWeatherLocationGt]:
     ]
 
 
-def load_weather_channels(session: Session) -> list[GwWeatherChannelGt]:
+def load_weather_channels(session: Session) -> list[WeatherChannelGt]:
     return [
-        GwWeatherChannelGt(
+        WeatherChannelGt(
             name=row.name,
             display_name=row.display_name,
             quantity=row.quantity,
@@ -188,9 +187,9 @@ def load_weather_channels(session: Session) -> list[GwWeatherChannelGt]:
     ]
 
 
-def load_forecast_channels(session: Session) -> list[GwWeatherForecastChannelGt]:
+def load_forecast_channels(session: Session) -> list[WeatherForecastChannelGt]:
     return [
-        GwWeatherForecastChannelGt(
+        WeatherForecastChannelGt(
             name=row.name,
             target_channel_name=row.target_channel_name,
             forecaster=row.forecaster,
@@ -213,14 +212,14 @@ def load_forecast_channels(session: Session) -> list[GwWeatherForecastChannelGt]
 # ----------------------------------------------------------------------
 
 
-def load_bundles(session: Session) -> list[GwWeatherForecastBundleGt]:
+def load_bundles(session: Session) -> list[WeatherForecastBundleGt]:
     """Reconstruct each bundle FROM the canonical channel rows — the
     word's axioms fire on construction, which IS the boot-time check
     that the decomposed record still holds together."""
     forecast_by_name = {c.name: c for c in load_forecast_channels(session)}
     observation_by_name = {c.name: c for c in load_weather_channels(session)}
     return [
-        GwWeatherForecastBundleGt(
+        WeatherForecastBundleGt(
             name=row.name,
             display_name=row.display_name,
             location_alias=row.location_alias,
@@ -243,7 +242,7 @@ def load_bundles(session: Session) -> list[GwWeatherForecastBundleGt]:
     ]
 
 
-def store_forecast(session: Session, message: GwWeatherForecast) -> None:
+def store_forecast(session: Session, message: WeatherForecast) -> None:
     """One row per send-distinct message; re-sends of an identical
     window under a held source revision no-op."""
     statement = (
@@ -263,7 +262,7 @@ def store_forecast(session: Session, message: GwWeatherForecast) -> None:
     session.commit()
 
 
-def latest_forecast(session: Session, bundle_name: str) -> GwWeatherForecast | None:
+def latest_forecast(session: Session, bundle_name: str) -> WeatherForecast | None:
     row = session.scalars(
         select(ForecastSql)
         .where(ForecastSql.bundle_name == bundle_name)
@@ -272,7 +271,7 @@ def latest_forecast(session: Session, bundle_name: str) -> GwWeatherForecast | N
     ).first()
     if row is None:
         return None
-    return default_codec.from_dict(row.payload, expect=GwWeatherForecast)
+    return default_codec.from_dict(row.payload, expect=WeatherForecast)
 
 
 # ----------------------------------------------------------------------
@@ -336,7 +335,7 @@ class StoredObservation(NamedTuple):
     observation itself is the word; the pairing is scheduler state.
     """
 
-    observation: GwWeatherObservation
+    observation: WeatherObservation
     published_slot: int
 
 
@@ -344,7 +343,7 @@ def save_last_observation(
     session: Session,
     *,
     location_alias: str,
-    observation: GwWeatherObservation,
+    observation: WeatherObservation,
     published_slot: int,
 ) -> None:
     values = dict(
@@ -369,6 +368,6 @@ def load_last_observation(
     if row is None:
         return None
     return StoredObservation(
-        observation=default_codec.from_dict(row.payload, expect=GwWeatherObservation),
+        observation=default_codec.from_dict(row.payload, expect=WeatherObservation),
         published_slot=row.published_slot,
     )

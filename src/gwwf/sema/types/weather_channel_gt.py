@@ -1,8 +1,8 @@
 from typing import Literal
 from pydantic import model_validator
 from gwwf.sema.base import SemaType
-from gwwf.sema.enums import Gw1Quantity
-from gwwf.sema.enums import Gw1Unit
+from gwwf.sema.enums import Quantity
+from gwwf.sema.enums import Unit
 from gwwf.sema.property_format import LeftRightDot
 from gwwf.sema.property_format import NonEmptyString
 from gwwf.sema.property_format import NonNegativeInt
@@ -11,13 +11,13 @@ from gwwf.sema.property_format import UUID4Str
 from gwwf.sema.property_format import UtcIso8601Seconds
 
 
-class GwWeatherChannelGt(SemaType):
+class WeatherChannelGt(SemaType):
     """Sema: https://schemas.electricity.works/types/gw.weather.channel.gt/000"""
 
     name: LeftRightDot
     display_name: NonEmptyString
-    quantity: Gw1Quantity
-    unit: Gw1Unit
+    quantity: Quantity
+    unit: Unit
     location_alias: LeftRightDot
     emit_period_s: PositiveInt
     emit_offset_s: NonNegativeInt
@@ -27,7 +27,7 @@ class GwWeatherChannelGt(SemaType):
     version: Literal["000"] = "000"
 
     @model_validator(mode="after")
-    def check_axiom_1(self) -> "GwWeatherChannelGt":
+    def check_axiom_1(self) -> "WeatherChannelGt":
         """
         Axiom 1: NameDerivation
         Name SHALL equal LocationAlias + "." + the lowercased Quantity value, optionally
@@ -44,7 +44,7 @@ class GwWeatherChannelGt(SemaType):
         return self
 
     @model_validator(mode="after")
-    def check_axiom_2(self) -> "GwWeatherChannelGt":
+    def check_axiom_2(self) -> "WeatherChannelGt":
         """
         Axiom 2: EmitOffsetBound
         EmitOffsetS SHALL be strictly less than EmitPeriodS.

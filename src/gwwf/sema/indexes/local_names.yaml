@@ -1,14 +1,17 @@
 enums:
-  gw.weather.forecast.fidelity: gw.weather.forecast.fidelity
-  gw1.quantity: gw1.quantity
-  gw1.unit: gw1.unit
+  gw.weather.forecast.fidelity: weather.forecast.fidelity
+  gw1.quantity: quantity
+  gw1.unit: unit
   log.level: log.level
 types:
   glitch: glitch
-  gw.weather.channel.gt: gw.weather.channel.gt
-  gw.weather.forecast: gw.weather.forecast
-  gw.weather.forecast.bundle.gt: gw.weather.forecast.bundle.gt
-  gw.weather.forecast.channel.gt: gw.weather.forecast.channel.gt
-  gw.weather.location.gt: gw.weather.location.gt
-  gw.weather.observation: gw.weather.observation
+  gw.weather.channel.gt: weather.channel.gt
+  gw.weather.cmd.ack: weather.cmd.ack
+  gw.weather.cmd.nack: weather.cmd.nack
+  gw.weather.create.cmd: weather.create.cmd
+  gw.weather.forecast: weather.forecast
+  gw.weather.forecast.bundle.gt: weather.forecast.bundle.gt
+  gw.weather.forecast.channel.gt: weather.forecast.channel.gt
+  gw.weather.location.gt: weather.location.gt
+  gw.weather.observation: weather.observation
   weather: weather

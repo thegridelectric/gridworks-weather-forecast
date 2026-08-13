@@ -9,22 +9,22 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from gwwf import records
+from tests import records
 from gwwf.api import SEMA_DEFINITION_URL, create_app
 from gwwf.config import GwwfSettings
-from gwwf.sema.enums import GwWeatherForecastFidelity
+from gwwf.sema.enums import WeatherForecastFidelity
 from gwwf.sema.types import (
-    GwWeatherChannelGt,
-    GwWeatherForecast,
-    GwWeatherForecastBundleGt,
-    GwWeatherForecastChannelGt,
-    GwWeatherLocationGt,
-    GwWeatherObservation,
+    WeatherChannelGt,
+    WeatherForecast,
+    WeatherForecastBundleGt,
+    WeatherForecastChannelGt,
+    WeatherLocationGt,
+    WeatherObservation,
 )
 
 BUNDLE = records.MILLINOCKET_NWS_HOURLY_BUNDLE
 
-OBSERVATION = GwWeatherObservation(
+OBSERVATION = WeatherObservation(
     location_alias=records.MILLINOCKET_LOCATION.alias,
     observation_time="2026-08-12T14:00:00Z",
     interpolated=False,
@@ -32,11 +32,11 @@ OBSERVATION = GwWeatherObservation(
     temp_value=7268,
     wind_speed_channel_name=records.WINDSPEED_CHANNEL.name,
 )
-FORECAST = GwWeatherForecast(
+FORECAST = WeatherForecast(
     bundle_name=BUNDLE.name,
     source_updated_time="2026-08-12T09:09:03Z",
     message_created_ms=1786280400000,
-    fidelity=GwWeatherForecastFidelity.Live,
+    fidelity=WeatherForecastFidelity.Live,
     first_slice_start="2026-08-12T15:00:00Z",
     temp_channel_name=BUNDLE.temp_forecast_channel.name,
     temp_values=[7000] * 48,
@@ -46,26 +46,26 @@ FORECAST = GwWeatherForecast(
 
 
 class OneOfEachSource:
-    def channels(self) -> list[GwWeatherChannelGt]:
+    def channels(self) -> list[WeatherChannelGt]:
         return records.OBSERVATION_CHANNELS
 
-    def forecast_channels(self) -> list[GwWeatherForecastChannelGt]:
+    def forecast_channels(self) -> list[WeatherForecastChannelGt]:
         return records.FORECAST_CHANNELS
 
-    def bundles(self) -> list[GwWeatherForecastBundleGt]:
+    def bundles(self) -> list[WeatherForecastBundleGt]:
         return records.FORECAST_BUNDLES
 
-    def locations(self) -> list[GwWeatherLocationGt]:
+    def locations(self) -> list[WeatherLocationGt]:
         return [records.MILLINOCKET_LOCATION]
 
-    def latest_observation(self, location_alias: str) -> GwWeatherObservation | None:
+    def latest_observation(self, location_alias: str) -> WeatherObservation | None:
         return (
             OBSERVATION
             if location_alias == records.MILLINOCKET_LOCATION.alias
             else None
         )
 
-    def latest_forecast(self, bundle_name: str) -> GwWeatherForecast | None:
+    def latest_forecast(self, bundle_name: str) -> WeatherForecast | None:
         return FORECAST if bundle_name == BUNDLE.name else None
 
 
@@ -105,7 +105,7 @@ def test_point_lookups_are_wire_form_and_404() -> None:
 def test_openapi_schemas_link_to_sema_definitions() -> None:
     schema = client.get("/openapi.json").json()
     components = schema["components"]["schemas"]
-    observation = components["GwWeatherObservation"]
+    observation = components["WeatherObservation"]
     expected = SEMA_DEFINITION_URL.format(
         type_name="gw.weather.observation", version="000"
     )

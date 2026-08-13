@@ -25,7 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from gwwf.sema.enums import Gw1Quantity, Gw1Unit, GwWeatherForecastFidelity
+from gwwf.sema.enums import Quantity, Unit, WeatherForecastFidelity
 
 
 class Base(DeclarativeBase):
@@ -61,10 +61,8 @@ class WeatherChannelSql(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String)
-    quantity: Mapped[Gw1Quantity] = mapped_column(
-        Enum(Gw1Quantity, name="gw1_quantity")
-    )
-    unit: Mapped[Gw1Unit] = mapped_column(Enum(Gw1Unit, name="gw1_unit"))
+    quantity: Mapped[Quantity] = mapped_column(Enum(Quantity, name="quantity"))
+    unit: Mapped[Unit] = mapped_column(Enum(Unit, name="unit"))
     location_alias: Mapped[str] = mapped_column(String, ForeignKey("locations.alias"))
     emit_period_s: Mapped[int] = mapped_column(Integer)
     emit_offset_s: Mapped[int] = mapped_column(Integer)
@@ -140,8 +138,8 @@ class ForecastSql(Base):
     source_updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     first_slice_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     message_created_ms: Mapped[int] = mapped_column(BigInteger)
-    fidelity: Mapped[GwWeatherForecastFidelity] = mapped_column(
-        Enum(GwWeatherForecastFidelity, name="gw_weather_forecast_fidelity")
+    fidelity: Mapped[WeatherForecastFidelity] = mapped_column(
+        Enum(WeatherForecastFidelity, name="weather_forecast_fidelity")
     )
     # The full gw.weather.forecast message, wire form (to_dict).
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
