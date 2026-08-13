@@ -173,7 +173,7 @@ def g_node_file(tmp_path: Path) -> Path:
     path.write_text(
         json.dumps({
             "TypeName": "g.node.gt",
-            "Version": "004",
+            "Version": "006",
             "GNodeId": str(uuid.uuid4()),
             "Alias": SERVICE_ALIAS,
             "BaseClass": "Logical",
