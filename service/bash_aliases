@@ -5,7 +5,7 @@
 # call naming both units would NOT match the per-unit grants).
 #
 # The two units log differently: weather-rabbit is a gwbase actor with
-# a GNode identity, so it has the bijective file logger (rabbitlog);
+# a GNode identity, so it has the bijective file logger (weatherlog);
 # weather-api is a plain FastAPI/uvicorn process with no actor
 # identity, so its output is journald-only (apilog).
 
@@ -14,5 +14,5 @@ alias weatherstop='sudo systemctl stop weather-rabbit && sudo systemctl stop wea
 alias weatherrestart='sudo systemctl restart weather-rabbit && sudo systemctl restart weather-api'
 alias weatherstatus='systemctl status weather-rabbit weather-api --no-pager'
 
-alias rabbitlog='cd "$HOME"/.local/state/gridworks/weather-forecast/log && tail -F *.log'
+alias weatherlog='cd "$HOME"/.local/state/gridworks/weather-forecast/log && tail -F *.log'
 alias apilog='journalctl -u weather-api -f'
