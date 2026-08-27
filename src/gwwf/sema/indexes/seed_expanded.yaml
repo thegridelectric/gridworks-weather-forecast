@@ -1,6 +1,6 @@
 metadata:
   generated_from: indexes/public_registry.yaml
-  generated_at: '2026-08-12T20:30:40Z'
+  generated_at: '2026-08-22T23:33:03Z'
   note: Transitive closure of initial_targets
 initial_targets:
 - gw.weather.observation:000

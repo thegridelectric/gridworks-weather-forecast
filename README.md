@@ -27,6 +27,15 @@ records in the service's own Postgres (gwwf is the sole accessor);
 NWS is the current source (station observations + gridpoint hourly
 forecasts), held as one competing forecaster, not an identity.
 
+Message types are governed by **Sema** — the versioned vocabulary of
+JSON-Schema contracts for all GridWorks message boundaries, canonical at
+[`thegridelectric/sema`](https://github.com/thegridelectric/sema) (schema
+ids under `https://schemas.electricity.works`). This repo carries a vendored
+snapshot at `src/gwwf/sema` — generated, never hand-edit; regenerate with
+`scripts/regen_sema_snapshot.sh` from the seed
+`src/gwwf/sema_seed_request.yaml`. See `src/gwwf/sema/README.md` for the
+working rules.
+
 ## Quick start (dev)
 
 Requires Python 3.12+, [`uv`](https://docs.astral.sh/uv/), Docker, and
