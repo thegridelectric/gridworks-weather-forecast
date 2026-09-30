@@ -116,7 +116,7 @@ def rabbit_url() -> Iterator[str]:
     except ImportError:
         pytest.skip("no GWWF_TEST_RABBIT_URL and testcontainers not installed")
     try:
-        rabbit = RabbitMqContainer("rabbitmq:3.13")
+        rabbit = RabbitMqContainer("rabbitmq:3.13", vhost="d1__1")
         rabbit.start()
     except Exception as e:  # noqa: BLE001 -- Docker unavailable / pull failed
         pytest.skip(f"could not start a testcontainers RabbitMQ: {e}")
