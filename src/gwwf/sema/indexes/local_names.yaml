@@ -14,4 +14,5 @@ types:
   gw.weather.forecast.channel.gt: weather.forecast.channel.gt
   gw.weather.location.gt: weather.location.gt
   gw.weather.observation: weather.observation
+  gw.weather.seasonal.template.gt: weather.seasonal.template.gt
   weather: weather

@@ -14,9 +14,10 @@ points are replayed as interpolated messages (``Interpolated: true``)
 when the bracketing real observations are ≤ ``max_fill_s`` apart —
 temperature always, wind only when both bracketing observations carry
 it. Forecast contract: one ``gw.weather.forecast`` per BUNDLE per
-slot, always emitted on schedule; fidelity ladder live → stored; the
-seasonal-template rung is declared but unbuilt — reaching it glitches
-and skips (Open until a template data source is chosen). In-memory
+slot, always emitted on schedule; fidelity ladder live → stored →
+seasonal template (the bundle's location record of design-cold
+temperatures by month, laid on the grid with no wind; a stream with no
+template glitches and skips the slot instead). In-memory
 state only: the stored product and last-observation memory reset on
 boot unless the actor restores them from the DB via the streams'
 initial fields.
@@ -27,6 +28,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Callable, NamedTuple
+
+from datetime import UTC, datetime
 
 from gwwf.grid import (
     GridError,
@@ -45,6 +48,7 @@ from gwwf.sema.types import (
     WeatherForecast,
     WeatherForecastBundleGt,
     WeatherObservation,
+    WeatherSeasonalTemplateGt,
 )
 
 WeatherMessage = WeatherObservation | WeatherForecast
@@ -81,7 +85,9 @@ class ForecastStream(NamedTuple):
     (axiom-shared). ``temp_scale`` / ``wind_speed_scale`` map the
     product's natural units onto the channels' scaled-integer units —
     supplied by the actor from the observation channels' Units.
-    ``initial_product`` restores the stored rung across a restart.
+    ``initial_product`` restores the stored rung across a restart;
+    ``template`` is the location's seasonal template, the last rung,
+    None when the location has none.
     """
 
     bundle: WeatherForecastBundleGt
@@ -89,6 +95,7 @@ class ForecastStream(NamedTuple):
     temp_scale: int
     wind_speed_scale: int
     initial_product: HourlyForecastProduct | None = None
+    template: WeatherSeasonalTemplateGt | None = None
 
 
 @dataclass
@@ -301,14 +308,46 @@ class EmissionScheduler:
             state.stored = product
         except Exception as e:  # noqa: BLE001 -- ladder rung, not a crash
             if state.stored is None:
-                self._raise_glitch(
-                    LogLevel.Error,
-                    "no live product and no stored revision",
-                    f"seasonal-template rung unbuilt; slot skipped: {e!r}",
+                self._fire_template(
+                    stream,
+                    state,
+                    slot_s,
+                    f"no live product and no stored revision: {e!r}",
                 )
                 return
             product = state.stored
             fidelity = WeatherForecastFidelity.Stored
+        try:
+            message = self._build_forecast(stream, product, fidelity, slot_s)
+        except GridError as e:
+            self._fire_template(
+                stream, state, slot_s, f"stored horizon exhausted: {e!r}"
+            )
+            return
+        self._emit_forecast(stream, state, message, fidelity)
+
+    def _fire_template(
+        self, stream: ForecastStream, state: _ForecastState, slot_s: int, why: str
+    ) -> None:
+        """The last rung: the location's seasonal template on the bundle
+        grid, or a glitch and a skipped slot when the location has none."""
+        if stream.template is None:
+            self._raise_glitch(
+                LogLevel.Error, "no seasonal template", f"slot skipped; {why}"
+            )
+            return
+        message = self._build_template_forecast(stream, stream.template, slot_s)
+        self._emit_forecast(
+            stream, state, message, WeatherForecastFidelity.SeasonalTemplate
+        )
+
+    def _emit_forecast(
+        self,
+        stream: ForecastStream,
+        state: _ForecastState,
+        message: WeatherForecast,
+        fidelity: WeatherForecastFidelity,
+    ) -> None:
         if (
             state.last_fidelity is not None
             and _FIDELITY_RANK[fidelity] > _FIDELITY_RANK[state.last_fidelity]
@@ -318,17 +357,41 @@ class EmissionScheduler:
                 "forecast fidelity downgrade",
                 f"{state.last_fidelity.value} → {fidelity.value}",
             )
-        try:
-            message = self._build_forecast(stream, product, fidelity, slot_s)
-        except GridError as e:
-            self._raise_glitch(
-                LogLevel.Error,
-                "stored horizon exhausted",
-                f"seasonal-template rung unbuilt; slot skipped: {e!r}",
-            )
-            return
-        self._publish(message, bundle.name)
+        self._publish(message, stream.bundle.name)
         state.last_fidelity = fidelity
+
+    def _build_template_forecast(
+        self,
+        stream: ForecastStream,
+        template: WeatherSeasonalTemplateGt,
+        slot_s: int,
+    ) -> WeatherForecast:
+        """Each slice at its month's template temperature (the template
+        carries degrees Fahrenheit times 100; the channel's own scaling
+        is applied) and no wind."""
+        bundle = stream.bundle
+        durations = bundle.temp_forecast_channel.slice_duration_s_list
+        first_s = next_slot(slot_s, durations[0], 0)
+        starts = slice_starts(first_s, durations)
+        temp_values = [
+            round(
+                template.temp_by_month[datetime.fromtimestamp(s, UTC).month - 1]
+                * stream.temp_scale
+                / 100
+            )
+            for s in starts
+        ]
+        return WeatherForecast(
+            bundle_name=bundle.name,
+            source_updated_time=template.start,
+            message_created_ms=slot_s * 1000,
+            fidelity=WeatherForecastFidelity.SeasonalTemplate,
+            first_slice_start=s_to_iso(first_s),
+            temp_channel_name=bundle.temp_forecast_channel.name,
+            temp_values=temp_values,
+            wind_speed_channel_name=bundle.wind_speed_forecast_channel.name,
+            wind_speed_values=[0] * len(starts),
+        )
 
     def _build_forecast(
         self,

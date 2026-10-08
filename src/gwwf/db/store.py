@@ -23,6 +23,7 @@ from gwwf.db.models import (
     ForecastSql,
     LastObservationSql,
     LocationSql,
+    SeasonalTemplateSql,
     SourceProductSql,
     WeatherChannelSql,
 )
@@ -36,6 +37,7 @@ from gwwf.sema.types import (
     WeatherForecastChannelGt,
     WeatherLocationGt,
     WeatherObservation,
+    WeatherSeasonalTemplateGt,
 )
 
 
@@ -54,7 +56,13 @@ def _iso(dt: datetime) -> str:
 
 def _record_row(
     record: RecordWord,
-) -> LocationSql | WeatherChannelSql | ForecastChannelSql | BundleSql:
+) -> (
+    LocationSql
+    | WeatherChannelSql
+    | ForecastChannelSql
+    | BundleSql
+    | SeasonalTemplateSql
+):
     if isinstance(record, WeatherLocationGt):
         return LocationSql(
             id=record.id,
@@ -90,6 +98,13 @@ def _record_row(
             total_slices=record.total_slices,
             slice_duration_s_list=record.slice_duration_s_list,
             forecast_duration_minutes=record.forecast_duration_minutes,
+            start=_dt(record.start),
+        )
+    if isinstance(record, WeatherSeasonalTemplateGt):
+        return SeasonalTemplateSql(
+            id=record.id,
+            location_alias=record.location_alias,
+            temp_by_month=record.temp_by_month,
             start=_dt(record.start),
         )
     return BundleSql(
@@ -138,7 +153,8 @@ def _require_embedded_agreement(
 def insert_record(session: Session, record: RecordWord) -> None:
     """Insert-only create — records are durable identities, never
     upserted. A duplicate id/name or a missing reference (referential
-    order: location → channels → bundle) raises IntegrityError; a
+    order: location → channels → bundle, location → template) raises
+    IntegrityError; a
     bundle whose embedded channel copies disagree with the canonical
     rows raises ValueError before anything is written."""
     if isinstance(record, WeatherForecastBundleGt):
@@ -205,6 +221,35 @@ def load_forecast_channels(session: Session) -> list[WeatherForecastChannelGt]:
             select(ForecastChannelSql).order_by(ForecastChannelSql.name)
         )
     ]
+
+
+def load_seasonal_templates(session: Session) -> list[WeatherSeasonalTemplateGt]:
+    return [
+        WeatherSeasonalTemplateGt(
+            location_alias=row.location_alias,
+            temp_by_month=row.temp_by_month,
+            start=_iso(row.start),
+            id=row.id,
+        )
+        for row in session.scalars(
+            select(SeasonalTemplateSql).order_by(
+                SeasonalTemplateSql.location_alias, SeasonalTemplateSql.start
+            )
+        )
+    ]
+
+
+def active_seasonal_template(
+    session: Session, location_alias: str, now_s: int
+) -> WeatherSeasonalTemplateGt | None:
+    """The location's template with the latest Start at or before
+    `now_s`, or None when the location has none yet."""
+    active = [
+        t
+        for t in load_seasonal_templates(session)
+        if t.location_alias == location_alias and _dt(t.start).timestamp() <= now_s
+    ]
+    return max(active, key=lambda t: t.start) if active else None
 
 
 # ----------------------------------------------------------------------

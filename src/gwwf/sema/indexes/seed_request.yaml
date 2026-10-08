@@ -19,6 +19,7 @@ initial_targets:
     gw.weather.forecast.bundle.gt: {}
     gw.weather.forecast.channel.gt: {}
     gw.weather.location.gt: {}
+    gw.weather.seasonal.template.gt: {}
     gw.weather.create.cmd: {}
     gw.weather.cmd.ack: {}
     gw.weather.cmd.nack: {}

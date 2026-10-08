@@ -21,6 +21,7 @@ from gwwf.db.store import (
     load_last_observation,
     load_locations,
     load_product,
+    load_seasonal_templates,
     load_weather_channels,
     save_last_observation,
     save_product,
@@ -63,6 +64,7 @@ def test_records_round_trip_as_equal_records(db_session: Session) -> None:
     assert load_forecast_channels(db_session) == records.FORECAST_CHANNELS
     # Bundles reconstruct FROM the canonical rows — axioms fire on load.
     assert load_bundles(db_session) == records.FORECAST_BUNDLES
+    assert load_seasonal_templates(db_session) == records.SEASONAL_TEMPLATES
 
 
 def test_insert_record_is_insert_only(db_session: Session) -> None:
@@ -79,6 +81,9 @@ def test_insert_record_enforces_referential_order(db_session: Session) -> None:
     # A channel before its location refuses on the FK.
     with pytest.raises(IntegrityError):
         insert_record(db_session, records.TEMPERATURE_CHANNEL)
+    # So does the location's seasonal template.
+    with pytest.raises(IntegrityError):
+        insert_record(db_session, records.MILLINOCKET_SEASONAL_TEMPLATE)
     # A bundle whose channels are absent refuses with the reason.
     insert_record(db_session, records.MILLINOCKET_LOCATION)
     with pytest.raises(ValueError, match="no canonical record"):

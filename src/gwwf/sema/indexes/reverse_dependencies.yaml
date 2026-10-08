@@ -5,21 +5,25 @@ types:
   gw.weather.channel.gt:
     '000':
       used_by:
-      - gw.weather.create.cmd:000
+      - gw.weather.create.cmd:001
       - gw.weather.forecast.bundle.gt:000
   gw.weather.forecast.bundle.gt:
     '000':
       used_by:
-      - gw.weather.create.cmd:000
+      - gw.weather.create.cmd:001
   gw.weather.forecast.channel.gt:
     '000':
       used_by:
-      - gw.weather.create.cmd:000
+      - gw.weather.create.cmd:001
       - gw.weather.forecast.bundle.gt:000
   gw.weather.location.gt:
     '000':
       used_by:
-      - gw.weather.create.cmd:000
+      - gw.weather.create.cmd:001
+  gw.weather.seasonal.template.gt:
+    '000':
+      used_by:
+      - gw.weather.create.cmd:001
 enums:
   gw.weather.forecast.fidelity:
     '000':
@@ -48,6 +52,7 @@ formats:
     - gw.weather.forecast:000
     - gw.weather.location.gt:000
     - gw.weather.observation:000
+    - gw.weather.seasonal.template.gt:000
     - weather:000
   non.empty.string:
     used_by:
@@ -74,6 +79,7 @@ formats:
     - gw.weather.forecast.channel.gt:000
     - gw.weather.forecast:000
     - gw.weather.observation:000
+    - gw.weather.seasonal.template.gt:000
   utc.milliseconds:
     used_by:
     - glitch:000
@@ -87,3 +93,4 @@ formats:
     - gw.weather.forecast.bundle.gt:000
     - gw.weather.forecast.channel.gt:000
     - gw.weather.location.gt:000
+    - gw.weather.seasonal.template.gt:000

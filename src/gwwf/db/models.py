@@ -123,6 +123,22 @@ class BundleSql(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class SeasonalTemplateSql(Base):
+    """One gw.weather.seasonal.template.gt record: the design-cold
+    temperature of each month at a location, the forecast ladder's
+    last rung. A later record for the same location supersedes by
+    Start."""
+
+    __tablename__ = "seasonal_templates"
+    __table_args__ = (UniqueConstraint("location_alias", "start"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    location_alias: Mapped[str] = mapped_column(String, ForeignKey("locations.alias"))
+    temp_by_month: Mapped[list[int]] = mapped_column(JSONB)
+    start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class ForecastSql(Base):
     """One sent gw.weather.forecast message — wire-form payload.
 
