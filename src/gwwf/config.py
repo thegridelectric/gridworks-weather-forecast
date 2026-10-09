@@ -1,6 +1,7 @@
 """Settings for gridworks-weather-forecast."""
 
 from gwbase.config import GNodeSettings
+from gwbase.config.rabbit_settings import RabbitBrokerClient
 from gwbase.transport_format import LeftRightDot
 from pydantic import SecretStr
 from pydantic_settings import SettingsConfigDict
@@ -36,6 +37,13 @@ class GwwfSettings(GNodeSettings):
     # the supervisor and the time coordinator the actor heartbeats with.
     my_super_alias: str = "d1.super"
     my_time_coordinator_alias: str = "d1.time"
+
+    # The minter (`gwwf create`): the broker client the create command
+    # connects with. It is its own Service principal, so under a gated
+    # broker it carries its own cert in the `tls` block; each invocation
+    # is a fresh GNodeInstance on that principal. Unset, the minter
+    # connects with the actor's client (a dev broker with no gate).
+    minter_rabbit: RabbitBrokerClient | None = None
 
     model_config = SettingsConfigDict(
         env_prefix="GWWF_",
