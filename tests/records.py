@@ -19,6 +19,7 @@ from gwwf.sema.types import (
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherLocationGt,
+    WeatherSeasonalTemplateGt,
 )
 
 _lrd: TypeAdapter[LeftRightDot] = TypeAdapter(LeftRightDot)
@@ -113,21 +114,30 @@ MILLINOCKET_NWS_HOURLY_BUNDLE = WeatherForecastBundleGt(
     id="309885e5-57eb-4afc-9269-5740fde5d27e",
 )
 
+MILLINOCKET_SEASONAL_TEMPLATE = WeatherSeasonalTemplateGt(
+    location_alias=MILLINOCKET,
+    temp_by_month=[-300, -700, 100, 2100, 3000, 3100, 4600, 4700, 2800, 2400, 1600, 0],
+    start="2026-10-07T00:00:00Z",
+    id="3b7c1e52-8d4a-4f6e-9c2b-5a1d8e7f0c93",
+)
+
 OBSERVATION_CHANNELS = [TEMPERATURE_CHANNEL, WINDSPEED_CHANNEL]
 FORECAST_CHANNELS = [
     TEMPERATURE_FORECAST_NWS_HOURLY_CHANNEL,
     WINDSPEED_FORECAST_NWS_HOURLY_CHANNEL,
 ]
 FORECAST_BUNDLES = [MILLINOCKET_NWS_HOURLY_BUNDLE]
+SEASONAL_TEMPLATES = [MILLINOCKET_SEASONAL_TEMPLATE]
 
 
 def seed(session: Session) -> None:
-    """Insert the standup six in referential order through the
+    """Insert the standup seven in referential order through the
     insert-only store path."""
     for record in [
         MILLINOCKET_LOCATION,
         *OBSERVATION_CHANNELS,
         *FORECAST_CHANNELS,
         *FORECAST_BUNDLES,
+        *SEASONAL_TEMPLATES,
     ]:
         insert_record(session, record)

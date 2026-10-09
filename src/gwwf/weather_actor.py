@@ -42,6 +42,7 @@ from gwwf.config import GwwfSettings
 from gwwf.create import CREATE_CMD, command_hash
 from gwwf.db.session import session_factory_from
 from gwwf.db.store import (
+    active_seasonal_template,
     insert_record,
     load_bundles,
     load_last_observation,
@@ -145,6 +146,7 @@ class WeatherActor(GridworksActor):
             stored_product = load_product(
                 session, method=self._method, source_locator=self._source_locator or ""
             )
+            template = active_seasonal_template(session, location.alias, now_s)
 
         observation_channels = [
             bundle.temp_observation_channel,
@@ -182,6 +184,7 @@ class WeatherActor(GridworksActor):
                         bundle.wind_speed_observation_channel.unit
                     ],
                     initial_product=stored_product,
+                    template=template,
                 )
             ],
             publish=self._publish_stream,

@@ -70,6 +70,9 @@ def test_record_listings_and_latest_pulls(db_session: Session, pg_url: str) -> N
     assert client.get("/d1-weather/locations").json() == [
         records.MILLINOCKET_LOCATION.to_dict()
     ]
+    assert client.get("/d1-weather/seasonal-templates").json() == [
+        t.to_dict() for t in records.SEASONAL_TEMPLATES
+    ]
 
     # Byte-identical wire form to the broadcast.
     pulled = client.get(

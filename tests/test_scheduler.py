@@ -25,6 +25,7 @@ from gwwf.sema.types import (
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherObservation,
+    WeatherSeasonalTemplateGt,
 )
 
 LOCATION = "d1.test.loc"
@@ -91,6 +92,15 @@ BUNDLE = WeatherForecastBundleGt(
 )
 
 
+# January -3 F, a degree a month after, so a slice's month shows in its value.
+TEMPLATE = WeatherSeasonalTemplateGt(
+    location_alias=LOCATION,
+    temp_by_month=[-300 + 100 * m for m in range(12)],
+    start="2026-01-01T00:00:00Z",
+    id="3b7c1e52-8d4a-4f6e-9c2b-5a1d8e7f0c93",
+)
+
+
 def obs_at(epoch_s: int, temp: int, wind: int | None = None) -> WeatherObservation:
     return WeatherObservation(
         location_alias=LOCATION,
@@ -126,6 +136,7 @@ class Harness:
         initial_observation: WeatherObservation | None = None,
         initial_published_slot: int | None = None,
         now_s: int = 0,
+        template: WeatherSeasonalTemplateGt | None = None,
     ) -> None:
         self.published: list[tuple[object, str]] = []
         self.glitches: list[tuple[LogLevel, str, str]] = []
@@ -150,6 +161,7 @@ class Harness:
                     fetch=self._next_product,
                     temp_scale=100,
                     wind_speed_scale=1000,
+                    template=template,
                 )
             ]
         else:
@@ -301,6 +313,43 @@ def test_forecast_with_no_product_at_all_glitches_and_skips() -> None:
     assert h.glitches[0][0] == LogLevel.Error
 
 
+def test_no_product_at_all_fills_from_the_seasonal_template() -> None:
+    # B falls in August 2026, so every slice takes the template's eighth value.
+    h = Harness(products=[RuntimeError("nws down")], now_s=B, template=TEMPLATE)
+    h.scheduler.run_pending(B + 90)
+    assert len(h.published) == 1
+    message, radio = h.published[0]
+    assert radio == BUNDLE_NAME
+    assert message.fidelity == WeatherForecastFidelity.SeasonalTemplate
+    assert message.source_updated_time == TEMPLATE.start
+    assert message.first_slice_start == s_to_iso(B + 300)
+    assert message.temp_values == [400, 400, 400]
+    assert message.wind_speed_values == [0, 0, 0]
+    assert h.glitches == []
+
+
+def test_stored_horizon_exhaustion_fills_from_the_seasonal_template() -> None:
+    h = Harness(
+        products=[
+            product_from(B, [10, 20]),
+            RuntimeError("down"),
+            RuntimeError("down"),
+        ],
+        now_s=B,
+        template=TEMPLATE,
+    )
+    h.scheduler.run_pending(B + 90)  # live
+    h.scheduler.run_pending(B + 7500)  # beyond the stored horizon
+    assert [m.fidelity for m, _ in h.published] == [
+        WeatherForecastFidelity.Live,
+        WeatherForecastFidelity.SeasonalTemplate,
+    ]
+    assert h.published[1][0].temp_values == [400, 400, 400]
+    assert len(h.glitches) == 1
+    assert h.glitches[0][0] == LogLevel.Warning
+    assert "downgrade" in h.glitches[0][1]
+
+
 def test_stored_horizon_exhaustion_glitches_and_skips() -> None:
     h = Harness(
         products=[
@@ -315,4 +364,5 @@ def test_stored_horizon_exhaustion_glitches_and_skips() -> None:
     assert len(h.published) == 1
     errors = [g for g in h.glitches if g[0] == LogLevel.Error]
     assert len(errors) == 1
-    assert "exhausted" in errors[0][1]
+    assert "no seasonal template" in errors[0][1]
+    assert "exhausted" in errors[0][2]

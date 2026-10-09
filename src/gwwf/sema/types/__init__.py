@@ -9,6 +9,7 @@ from gwwf.sema.types.weather_forecast_bundle_gt import WeatherForecastBundleGt
 from gwwf.sema.types.weather_forecast_channel_gt import WeatherForecastChannelGt
 from gwwf.sema.types.weather_location_gt import WeatherLocationGt
 from gwwf.sema.types.weather_observation import WeatherObservation
+from gwwf.sema.types.weather_seasonal_template_gt import WeatherSeasonalTemplateGt
 
 __all__ = [
     "Glitch",
@@ -22,4 +23,5 @@ __all__ = [
     "WeatherForecastChannelGt",
     "WeatherLocationGt",
     "WeatherObservation",
+    "WeatherSeasonalTemplateGt",
 ]

@@ -1,7 +1,7 @@
 """Record wire shape — the broadcast half of the minting act.
 
-A record (location / channel / forecast-channel / bundle) is broadcast
-exactly once, by the actor, when its create command is applied; nothing
+A record (location / channel / forecast-channel / bundle / seasonal
+template) is broadcast exactly once, by the actor, when its create command is applied; nothing
 tracks or repeats the send. Radio channel = the record's own name,
 except the bundle broadcast, which carries NO radio tail — the TypeName
 segment already separates record broadcasts from stream messages, and
@@ -15,6 +15,7 @@ from gwwf.sema.types import (
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherLocationGt,
+    WeatherSeasonalTemplateGt,
 )
 
 RecordWord = (
@@ -22,12 +23,17 @@ RecordWord = (
     | WeatherChannelGt
     | WeatherForecastChannelGt
     | WeatherForecastBundleGt
+    | WeatherSeasonalTemplateGt
 )
 
 
 def record_name(record: RecordWord) -> str:
+    """The record's own name: the alias for the place words (a location,
+    and the template that fills for one), the Name for the rest."""
     if isinstance(record, WeatherLocationGt):
         return record.alias
+    if isinstance(record, WeatherSeasonalTemplateGt):
+        return record.location_alias
     return record.name
 
 

@@ -1,0 +1,4 @@
+staging: true
+staging_words:
+- type gw.weather.create.cmd:001
+- type gw.weather.seasonal.template.gt:000

@@ -16,6 +16,7 @@ from gwwf.sema.types import (
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherLocationGt,
+    WeatherSeasonalTemplateGt,
 )
 
 SAMPLES = Path(gwwf.sema.__file__).resolve().parent / "samples"
@@ -45,4 +46,9 @@ def test_non_bundle_records_ride_their_own_name() -> None:
         radio_channel_for(forecast_channel)
         == forecast_channel.name
         == record_name(forecast_channel)
+    )
+
+    template = _sample("gw.weather.seasonal.template.gt", WeatherSeasonalTemplateGt)
+    assert (
+        radio_channel_for(template) == template.location_alias == record_name(template)
     )

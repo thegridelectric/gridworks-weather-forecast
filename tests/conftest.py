@@ -79,6 +79,7 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
         ForecastSql,
         LastObservationSql,
         LocationSql,
+        SeasonalTemplateSql,
         SourceProductSql,
         WeatherChannelSql,
     )
@@ -92,6 +93,7 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
             SourceProductSql,
             ForecastChannelSql,
             WeatherChannelSql,
+            SeasonalTemplateSql,
             LocationSql,
         ):
             session.execute(delete(model))

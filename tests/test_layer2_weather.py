@@ -35,6 +35,7 @@ from gwwf.db.models import (
     ForecastSql,
     LastObservationSql,
     LocationSql,
+    SeasonalTemplateSql,
     SourceProductSql,
     WeatherChannelSql,
 )
@@ -265,6 +266,7 @@ def _clear_weather_tables(sessions) -> None:
             SourceProductSql,
             ForecastChannelSql,
             WeatherChannelSql,
+            SeasonalTemplateSql,
             LocationSql,
         ):
             session.execute(delete(model))

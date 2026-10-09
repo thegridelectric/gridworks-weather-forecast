@@ -1,5 +1,18 @@
 # Sema vocabulary snapshot (GENERATED)
 
+## ⚠ STAGING SNAPSHOT — PLEASE ONLY USE IN DEV
+
+This snapshot contains STAGING vocabulary: mutable words that run on dev
+brokers only. It MUST NOT be used against hybrid or production brokers.
+
+Staging words in this snapshot:
+
+- type gw.weather.create.cmd:001
+- type gw.weather.seasonal.template.gt:000
+
+When these words promote to published, rebuild without `--allow-staged` to
+get a publication-grade snapshot (and this section disappears).
+
 This directory is a **vendored Sema snapshot**: a self-contained, generated
 subset of the Sema vocabulary. **Never hand-edit it.** To change it, edit the
 seed (`../sema_seed_request.yaml`) or the definitions in the sema repo, then
@@ -7,12 +20,16 @@ re-run the repo's `scripts/regen_sema_snapshot.sh`.
 
 ## What Sema is
 
-Sema is a versioned vocabulary of JSON-Schema contracts governing the
-serialized messages exchanged between GridWorks applications — the authority
-over meaning at every durable-data and inter-app boundary. Every schema `$id`
-lives under the `https://schemas.electricity.works` namespace; the canonical
-registry and spec live in the sema repo
-(https://github.com/thegridelectric/sema — start at `spec/primary.md`).
+Sema is a vocabulary registry for structured messages exchanged between
+independent systems. It defines versioned types, enums, and formats
+expressed as JSON Schema; these act as boundary contracts, making the
+structure and semantics of serialized messages explicit and mechanically
+verifiable. Sema applies only at system boundaries — it governs the JSON
+exchanged between applications, not runtime architecture, database design,
+or internal object models. Every schema `$id` lives under the
+`https://schemas.electricity.works` namespace; the canonical registry and
+spec live in the sema repo (https://github.com/thegridelectric/sema — start
+at `spec/primary.md`).
 
 ## Working with Sema-typed data (rules that fight default idiom)
 

@@ -38,8 +38,8 @@ echo "==> seed:      ${SEED}"
 echo "==> package:   ${PACKAGE_NAME}"
 
 cd "${SEMA_REPO}"
-echo "==> sema snapshot prepare"
-uv run sema snapshot prepare "${SEED}"
+echo "==> sema snapshot prepare --allow-staged"
+uv run sema snapshot prepare --allow-staged "${SEED}"
 echo "==> sema snapshot build --package-name ${PACKAGE_NAME}"
 uv run sema snapshot build --package-name "${PACKAGE_NAME}"
 

@@ -35,6 +35,7 @@ from gwwf.db.store import (
     load_forecast_channels,
     load_last_observation,
     load_locations,
+    load_seasonal_templates,
     load_weather_channels,
 )
 from gwwf.sema.property_format import LeftRightDot
@@ -45,6 +46,7 @@ from gwwf.sema.types import (
     WeatherForecastChannelGt,
     WeatherLocationGt,
     WeatherObservation,
+    WeatherSeasonalTemplateGt,
 )
 
 # Where a sema word's definition lives — one constant so the whole docs
@@ -62,6 +64,7 @@ class WeatherReads(Protocol):
     def forecast_channels(self) -> list[WeatherForecastChannelGt]: ...
     def bundles(self) -> list[WeatherForecastBundleGt]: ...
     def locations(self) -> list[WeatherLocationGt]: ...
+    def seasonal_templates(self) -> list[WeatherSeasonalTemplateGt]: ...
     def latest_observation(self, location_alias: str) -> WeatherObservation | None: ...
     def latest_forecast(self, bundle_name: str) -> WeatherForecast | None: ...
 
@@ -87,6 +90,10 @@ class StoreReads:
     def locations(self) -> list[WeatherLocationGt]:
         with self._sessions() as session:
             return load_locations(session)
+
+    def seasonal_templates(self) -> list[WeatherSeasonalTemplateGt]:
+        with self._sessions() as session:
+            return load_seasonal_templates(session)
 
     def latest_observation(self, location_alias: str) -> WeatherObservation | None:
         with self._sessions() as session:
@@ -141,6 +148,12 @@ def create_app(
     def bundles() -> list[WeatherForecastBundleGt]:
         """The forecast bundle records — the sign-up objects."""
         return reads.bundles()
+
+    @router.get("/seasonal-templates", response_model_exclude_none=True)
+    def seasonal_templates() -> list[WeatherSeasonalTemplateGt]:
+        """The seasonal template records, every location's and every
+        Start; a consumer takes the latest Start for its location."""
+        return reads.seasonal_templates()
 
     @router.get("/locations", response_model_exclude_none=True)
     def locations() -> list[WeatherLocationGt]:
