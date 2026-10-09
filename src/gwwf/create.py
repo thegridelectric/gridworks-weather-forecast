@@ -7,7 +7,9 @@ the SHA-256 hash of the command bytes as published — the same bytes the
 actor hashes on its side. The sender is its own weather-class operator
 identity (`<universe>.weatherminter`), never the service alias: the
 actor addresses the verdict to the command envelope's from_alias, so a
-sender that shared the service identity would be answering itself.
+sender that shared the service identity would be answering itself. The
+minter is a durable Service principal (its own cert, `minter_rabbit`
+in the settings) and each invocation a fresh GNodeInstance on it.
 Command and verdict both ride the fabric's (weather, weather)
 self-edge — gwbase ≥ 0.5.9.
 """
@@ -72,6 +74,17 @@ class _MintPublisher(Orchestrator):
             self.verdicts[verdict.command_hash] = verdict
 
 
+def minter_settings(settings: GwwfSettings) -> ServiceSettings:
+    """The minter's own service settings: the `<universe>.weatherminter`
+    alias and the minter's broker client, the actor's when none is set."""
+    universe = settings.service_alias.split(".")[0]
+    return ServiceSettings(
+        service_alias=f"{universe}.weatherminter",
+        service_name="weather-minter",
+        rabbit=settings.minter_rabbit or settings.rabbit,
+    )
+
+
 def send_create(
     settings: GwwfSettings,
     record: RecordWord,
@@ -81,13 +94,8 @@ def send_create(
 ) -> tuple[str, Verdict | None]:
     """Publish the create command for `record`; return the command hash
     and the verdict (None when nothing answered within the timeout)."""
-    universe = settings.service_alias.split(".")[0]
     publisher = _MintPublisher(
-        settings=ServiceSettings(
-            service_alias=f"{universe}.weatherminter",
-            service_name="weather-minter",
-            rabbit=settings.rabbit,
-        ),
+        settings=minter_settings(settings),
         my_super_alias=settings.my_super_alias,
         my_time_coordinator_alias=settings.my_time_coordinator_alias,
     )
