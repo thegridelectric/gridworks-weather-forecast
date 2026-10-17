@@ -1,6 +1,6 @@
 {
   "TypeName": "gw.weather.create.cmd",
-  "Version": "001",
+  "Version": "002",
   "Record": {
     "TypeName": "gw.weather.seasonal.template.gt",
     "Version": "000",

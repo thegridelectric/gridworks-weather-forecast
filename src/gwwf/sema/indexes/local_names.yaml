@@ -10,9 +10,13 @@ types:
   gw.weather.cmd.nack: weather.cmd.nack
   gw.weather.create.cmd: weather.create.cmd
   gw.weather.forecast: weather.forecast
+  gw.weather.forecast.binding: weather.forecast.binding
   gw.weather.forecast.bundle.gt: weather.forecast.bundle.gt
   gw.weather.forecast.channel.gt: weather.forecast.channel.gt
+  gw.weather.forecast.series: weather.forecast.series
   gw.weather.location.gt: weather.location.gt
   gw.weather.observation: weather.observation
+  gw.weather.observation.reading: weather.observation.reading
   gw.weather.seasonal.template.gt: weather.seasonal.template.gt
+  gw.weather.station.gt: weather.station.gt
   weather: weather

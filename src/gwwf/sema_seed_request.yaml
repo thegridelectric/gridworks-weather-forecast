@@ -7,9 +7,10 @@
 # The gw.weather.* words are the service's vocabulary: the two message
 # words, plus the .gt record words whose canonical seed is the
 # gridworks-weather DB. The closure pulls the fidelity enum and
-# gw1.quantity / gw1.unit. Legacy `weather` (v000) stays while the
-# actor still publishes it; it leaves the seed with the last legacy
-# import.
+# gw1.quantity / gw1.unit. Latest versions only: the service speaks
+# the station words and nothing older. Legacy `weather` (v000) stays
+# while the actor still publishes it; it leaves the seed with the last
+# legacy import.
 
 initial_targets:
   types:

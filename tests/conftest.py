@@ -74,6 +74,7 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
     from sqlalchemy import delete
 
     from gwwf.db.models import (
+        BundleBindingSql,
         BundleSql,
         ForecastChannelSql,
         ForecastSql,
@@ -81,6 +82,7 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
         LocationSql,
         SeasonalTemplateSql,
         SourceProductSql,
+        StationSql,
         WeatherChannelSql,
     )
 
@@ -88,12 +90,14 @@ def db_session(migrated_engine: Engine) -> Iterator[Session]:
     with factory() as session:
         for model in (
             ForecastSql,
+            BundleBindingSql,
             BundleSql,
             LastObservationSql,
             SourceProductSql,
             ForecastChannelSql,
             WeatherChannelSql,
             SeasonalTemplateSql,
+            StationSql,
             LocationSql,
         ):
             session.execute(delete(model))

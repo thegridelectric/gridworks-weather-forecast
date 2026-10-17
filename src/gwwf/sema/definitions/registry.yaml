@@ -1,15 +1,29 @@
 metadata:
   registry_version: "1.0"
-  last_updated: "2026-10-07T22:15:00Z"
+  last_updated: "2026-10-18T18:50:00Z"
   maintainer: "gridworks-energy"
 
 formats:
+  iana.timezone.str:
+    owner: gridworks-energy
+    schema_url: "https://schemas.electricity.works/formats/iana.timezone.str"
+    created: "2026-09-17T20:10:00Z"
+    status: "published"
+    description: "Shape of an IANA tz-database identifier: one to three slash-separated segments of letters, digits, underscore, plus, or minus (e.g. America/New_York, Etc/GMT+5, UTC); validates shape only, not membership in the current tz database"
+
   left.right.dot:
     owner: gridworks-energy
     schema_url: "https://schemas.electricity.works/formats/left.right.dot"
     created: "2022-01-01T00:00:00Z"
     status: "published"
     description: "Dot-separated hierarchical identifier composed of lowercase alphanumeric segments"
+
+  lowercase.token:
+    owner: gridworks-energy
+    schema_url: "https://schemas.electricity.works/formats/lowercase.token"
+    created: "2026-10-18T15:30:00Z"
+    status: "published"
+    description: "One lowercase alphanumeric segment starting with a letter; exactly one segment of a dotted identifier, no separators"
 
   non.empty.string:
     owner: gridworks-energy
@@ -81,34 +95,35 @@ enums:
         status: "published"
 
   gw1.quantity:
-    latest_version: "002"
+    latest_version: "003"
     owner: gridworks-energy
     enum_type: "versioned"
     description: "High-level physical or semantic quantity classification for telemetry values."
 
     versions:
-      "002":
-        schema_url: "https://schemas.electricity.works/enums/gw1.quantity/002"
-        created: "2026-08-11T14:20:00Z"
+      "003":
+        schema_url: "https://schemas.electricity.works/enums/gw1.quantity/003"
+        created: "2026-10-15T11:35:00Z"
         status: "published"
         added_values:
-          - "WindSpeed"
+          - "Irradiance"
+          - "Currency"
 
   gw1.unit:
-    latest_version: "002"
+    latest_version: "003"
     owner: gridworks-energy
     enum_type: "versioned"
     description: "Measurement-unit vocabulary used for derived channels."
 
     versions:
-      "002":
-        schema_url: "https://schemas.electricity.works/enums/gw1.unit/002"
-        created: "2026-06-05T10:00:00Z"
+      "003":
+        schema_url: "https://schemas.electricity.works/enums/gw1.unit/003"
+        created: "2026-10-15T11:35:00Z"
         status: "published"
         added_values:
-          - "DollarsX1000"
-          - "MilesPerHourX1000"
-          - "KilowattHoursX1000"
+          - "WattsPerSquareMeter"
+          - "MilesPerHourX10"
+          - "FahrenheitX10"
 
   log.level:
     owner: gridworks-energy
@@ -139,22 +154,23 @@ types:
             - "utc.milliseconds"
 
   gw.weather.channel.gt:
-    latest_version: "000"
+    latest_version: "002"
     owner: gridworks-energy
     versioning_strategy: "literal"
-    description: "An observed weather series: one quantity at one place, the ground-truth series forecasters are scored against."
+    description: "An observed weather series: one quantity measured by one station, the ground-truth series forecasters are scored against."
 
     versions:
-      "000":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.channel.gt/000"
-        created: "2026-08-11T14:20:00Z"
+      "002":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.channel.gt/002"
+        created: "2026-10-18T15:30:00Z"
         status: "published"
-        summary: "Initial version."
+        summary: "- LocationAlias: removed; StationAlias: add (the gw.weather.station.gt whose readings this series is) - Name: derived from StationAlias and Quantity"
         direct_dependencies:
           structural:
-            - "gw1.quantity:002"
-            - "gw1.unit:002"
+            - "gw1.quantity:003"
+            - "gw1.unit:003"
             - "left.right.dot"
+            - "lowercase.token"
             - "non.empty.string"
             - "non.negative.int"
             - "positive.int"
@@ -192,68 +208,83 @@ types:
           structural: []
 
   gw.weather.create.cmd:
-    latest_version: "001"
+    latest_version: "002"
     owner: gridworks-energy
     versioning_strategy: "literal"
     description: "Command to create one weather record (location, observed channel, forecast channel, bundle, or seasonal template) — the human minting act; the service inserts, broadcasts once, and replies ack or nack."
 
     versions:
-      "001":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.create.cmd/001"
-        created: "2026-10-07T22:15:00Z"
-        status: "staging"
-        summary: "- Record: oneOf gains gw.weather.seasonal.template.gt/000"
+      "002":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.create.cmd/002"
+        created: "2026-10-18T15:30:00Z"
+        status: "published"
+        summary: "- Record: gw.weather.forecast.bundle.gt 001 -> 002 - Record: gw.weather.channel.gt 001 -> 002 - Record: gw.weather.location.gt 000 -> 001 - Record: oneOf gains gw.weather.station.gt/000"
         direct_dependencies:
           structural:
-            - "gw.weather.channel.gt:000"
-            - "gw.weather.forecast.bundle.gt:000"
+            - "gw.weather.channel.gt:002"
+            - "gw.weather.forecast.bundle.gt:002"
             - "gw.weather.forecast.channel.gt:000"
-            - "gw.weather.location.gt:000"
+            - "gw.weather.location.gt:001"
             - "gw.weather.seasonal.template.gt:000"
+            - "gw.weather.station.gt:000"
 
   gw.weather.forecast:
-    latest_version: "000"
+    latest_version: "001"
     owner: gridworks-energy
     versioning_strategy: "literal"
-    description: "Temperatures and wind speeds over a shared slice grid for a location, emitted per bundle by the GridWorks weather forecast service for flexible-load optimization."
+    description: "Weather series over a shared slice grid for a location, emitted per bundle by the GridWorks weather forecast service for flexible-load optimization; the bundle declares which series, each with its own fidelity."
 
     versions:
-      "000":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast/000"
-        created: "2026-08-11T14:20:00Z"
+      "001":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast/001"
+        created: "2026-10-17T16:00:00Z"
         status: "published"
-        summary: "Initial version."
+        summary: "- SourceUpdatedTime, Fidelity, TempChannelName, TempValues, WindSpeedChannelName, WindSpeedValues: removed - SeriesList: add (gw.weather.forecast.series 000, one per bound channel)"
         direct_dependencies:
           structural:
-            - "gw.weather.forecast.fidelity:000"
+            - "gw.weather.forecast.series:000"
             - "left.right.dot"
             - "utc.iso8601.seconds"
             - "utc.milliseconds"
 
-  gw.weather.forecast.bundle.gt:
+  gw.weather.forecast.binding:
     latest_version: "000"
     owner: gridworks-energy
     versioning_strategy: "literal"
-    description: "The subscribable curated set of forecast channels sharing one slice grid and emission schedule; embeds the forecast channels and their observed targets."
+    description: "One forecast channel with the observed channel it targets, as a bundle embeds it; the bundle's membership, not a record of its own."
 
     versions:
       "000":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast.bundle.gt/000"
-        created: "2026-08-12T13:10:00Z"
+        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast.binding/000"
+        created: "2026-10-18T15:30:00Z"
         status: "published"
         summary: "Initial version."
         direct_dependencies:
           structural:
-            - "gw.weather.channel.gt:000"
+            - "gw.weather.channel.gt:002"
             - "gw.weather.forecast.channel.gt:000"
+
+  gw.weather.forecast.bundle.gt:
+    latest_version: "002"
+    owner: gridworks-energy
+    versioning_strategy: "literal"
+    description: "The subscribable curated set of forecast channels sharing one slice grid and emission schedule; embeds each forecast channel with its observed target and declares which series its broadcasts hold."
+
+    versions:
+      "002":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast.bundle.gt/002"
+        created: "2026-10-18T15:30:00Z"
+        status: "published"
+        summary: "- TempForecastChannel, TempObservationChannel, WindSpeedForecastChannel, WindSpeedObservationChannel: removed - BindingList: add (gw.weather.forecast.binding 000, one per quantity)"
+        direct_dependencies:
+          structural:
+            - "gw.weather.forecast.binding:000"
             - "left.right.dot"
             - "non.empty.string"
             - "non.negative.int"
             - "positive.int"
             - "utc.iso8601.seconds"
             - "uuid4.str"
-          axiom:
-            - "gw1.quantity:002"
 
   gw.weather.forecast.channel.gt:
     latest_version: "000"
@@ -275,40 +306,77 @@ types:
             - "utc.iso8601.seconds"
             - "uuid4.str"
 
-  gw.weather.location.gt:
+  gw.weather.forecast.series:
     latest_version: "000"
     owner: gridworks-energy
     versioning_strategy: "literal"
-    description: "The place anchor for weather channels: provider-neutral coordinates, timezone, and station identifiers."
+    description: "One forecast series inside a gw.weather.forecast: a channel's values over the message's slice grid with its own fidelity and source revision time."
 
     versions:
       "000":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.location.gt/000"
-        created: "2026-08-11T14:20:00Z"
+        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast.series/000"
+        created: "2026-10-17T16:00:00Z"
         status: "published"
         summary: "Initial version."
         direct_dependencies:
           structural:
+            - "gw.weather.forecast.fidelity:000"
+            - "gw1.quantity:003"
             - "left.right.dot"
-            - "non.empty.string"
+            - "utc.iso8601.seconds"
+
+  gw.weather.location.gt:
+    latest_version: "001"
+    owner: gridworks-energy
+    versioning_strategy: "literal"
+    description: "The place anchor for weather bundles, stations and templates: coordinates and timezone; instruments are station records."
+
+    versions:
+      "001":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.location.gt/001"
+        created: "2026-10-18T15:30:00Z"
+        status: "published"
+        summary: "- IcaoId, WbanId, GhcnId, CoopId: removed (station identifiers live on gw.weather.station.gt) - Timezone: iana.timezone.str"
+        direct_dependencies:
+          structural:
+            - "iana.timezone.str"
+            - "left.right.dot"
             - "uuid4.str"
 
   gw.weather.observation:
+    latest_version: "001"
+    owner: gridworks-energy
+    versioning_strategy: "literal"
+    description: "One station observation: the readings one station took at ObservationTime, one per observed channel it reported; Interpolated marks gap-recovery fill."
+
+    versions:
+      "001":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.observation/001"
+        created: "2026-10-18T15:30:00Z"
+        status: "published"
+        summary: "- LocationAlias, TempChannelName, TempValue, WindSpeedChannelName, WindSpeedValue: removed - StationAlias: add; ReadingList: add (gw.weather.observation.reading 000, one per reported channel)"
+        direct_dependencies:
+          structural:
+            - "gw.weather.observation.reading:000"
+            - "lowercase.token"
+            - "utc.iso8601.seconds"
+
+  gw.weather.observation.reading:
     latest_version: "000"
     owner: gridworks-energy
     versioning_strategy: "literal"
-    description: "One station observation: air temperature and wind speed at a location at ObservationTime; Interpolated marks gap-recovery fill."
+    description: "One reading inside a gw.weather.observation: a channel's value at the message's ObservationTime."
 
     versions:
       "000":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.observation/000"
-        created: "2026-08-11T14:20:00Z"
+        schema_url: "https://schemas.electricity.works/types/gw.weather.observation.reading/000"
+        created: "2026-10-18T15:30:00Z"
         status: "published"
         summary: "Initial version."
         direct_dependencies:
           structural:
+            - "gw1.quantity:003"
             - "left.right.dot"
-            - "utc.iso8601.seconds"
 
   gw.weather.seasonal.template.gt:
     latest_version: "000"
@@ -320,11 +388,30 @@ types:
       "000":
         schema_url: "https://schemas.electricity.works/types/gw.weather.seasonal.template.gt/000"
         created: "2026-10-07T22:15:00Z"
-        status: "staging"
+        status: "published"
         summary: "Initial version."
         direct_dependencies:
           structural:
             - "left.right.dot"
+            - "utc.iso8601.seconds"
+            - "uuid4.str"
+
+  gw.weather.station.gt:
+    latest_version: "000"
+    owner: gridworks-energy
+    versioning_strategy: "literal"
+    description: "An observing instrument, the identity behind observed weather series: its alias, coordinates and the network identifiers that key it in external systems."
+
+    versions:
+      "000":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.station.gt/000"
+        created: "2026-10-18T15:30:00Z"
+        status: "published"
+        summary: "Initial version."
+        direct_dependencies:
+          structural:
+            - "lowercase.token"
+            - "non.empty.string"
             - "utc.iso8601.seconds"
             - "uuid4.str"
 

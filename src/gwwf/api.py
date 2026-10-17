@@ -36,9 +36,10 @@ from gwwf.db.store import (
     load_last_observation,
     load_locations,
     load_seasonal_templates,
+    load_stations,
     load_weather_channels,
 )
-from gwwf.sema.property_format import LeftRightDot
+from gwwf.sema.property_format import LeftRightDot, LowercaseToken
 from gwwf.sema.types import (
     WeatherChannelGt,
     WeatherForecast,
@@ -47,6 +48,7 @@ from gwwf.sema.types import (
     WeatherLocationGt,
     WeatherObservation,
     WeatherSeasonalTemplateGt,
+    WeatherStationGt,
 )
 
 # Where a sema word's definition lives — one constant so the whole docs
@@ -64,8 +66,9 @@ class WeatherReads(Protocol):
     def forecast_channels(self) -> list[WeatherForecastChannelGt]: ...
     def bundles(self) -> list[WeatherForecastBundleGt]: ...
     def locations(self) -> list[WeatherLocationGt]: ...
+    def stations(self) -> list[WeatherStationGt]: ...
     def seasonal_templates(self) -> list[WeatherSeasonalTemplateGt]: ...
-    def latest_observation(self, location_alias: str) -> WeatherObservation | None: ...
+    def latest_observation(self, station_alias: str) -> WeatherObservation | None: ...
     def latest_forecast(self, bundle_name: str) -> WeatherForecast | None: ...
 
 
@@ -91,13 +94,17 @@ class StoreReads:
         with self._sessions() as session:
             return load_locations(session)
 
+    def stations(self) -> list[WeatherStationGt]:
+        with self._sessions() as session:
+            return load_stations(session)
+
     def seasonal_templates(self) -> list[WeatherSeasonalTemplateGt]:
         with self._sessions() as session:
             return load_seasonal_templates(session)
 
-    def latest_observation(self, location_alias: str) -> WeatherObservation | None:
+    def latest_observation(self, station_alias: str) -> WeatherObservation | None:
         with self._sessions() as session:
-            stored = load_last_observation(session, location_alias)
+            stored = load_last_observation(session, station_alias)
         return stored.observation if stored else None
 
     def latest_forecast(self, bundle_name: str) -> WeatherForecast | None:
@@ -160,15 +167,18 @@ def create_app(
         """The place-anchor records."""
         return reads.locations()
 
-    @router.get(
-        "/latest-observation/{location_alias}", response_model_exclude_none=True
-    )
-    def latest_observation(location_alias: LeftRightDot) -> WeatherObservation:
-        """The last real observation for a location (404 if none stored)."""
-        message = reads.latest_observation(location_alias)
+    @router.get("/stations", response_model_exclude_none=True)
+    def stations() -> list[WeatherStationGt]:
+        """The observing-instrument records."""
+        return reads.stations()
+
+    @router.get("/latest-observation/{station_alias}", response_model_exclude_none=True)
+    def latest_observation(station_alias: LowercaseToken) -> WeatherObservation:
+        """The last real observation for a station (404 if none stored)."""
+        message = reads.latest_observation(station_alias)
         if message is None:
             raise HTTPException(
-                status_code=404, detail=f"no observation for {location_alias}"
+                status_code=404, detail=f"no observation for {station_alias}"
             )
         return message
 

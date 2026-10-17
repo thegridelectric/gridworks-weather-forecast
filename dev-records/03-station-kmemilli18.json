@@ -1,0 +1,11 @@
+{
+  "Alias": "kmemilli18",
+  "DisplayName": "Millinocket personal weather station (KMEMILLI18)",
+  "LatitudeMicrodegrees": 45657300,
+  "LongitudeMicrodegrees": -68709800,
+  "WundergroundId": "KMEMILLI18",
+  "Start": "2026-10-18T00:00:00Z",
+  "Id": "4f6c0a2e-8b3d-4c71-9e5a-2d7f1b8c6a93",
+  "TypeName": "gw.weather.station.gt",
+  "Version": "000"
+}

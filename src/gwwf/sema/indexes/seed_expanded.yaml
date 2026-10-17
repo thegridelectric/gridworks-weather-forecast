@@ -1,24 +1,28 @@
 metadata:
   generated_from: indexes/public_registry.yaml
-  generated_at: '2026-10-07T22:33:30Z'
+  generated_at: '2026-10-18T18:53:27Z'
   note: Transitive closure of initial_targets
 initial_targets:
-- gw.weather.observation:000
-- gw.weather.forecast:000
-- gw.weather.channel.gt:000
-- gw.weather.forecast.bundle.gt:000
+- gw.weather.observation:001
+- gw.weather.forecast:001
+- gw.weather.channel.gt:002
+- gw.weather.forecast.bundle.gt:002
 - gw.weather.forecast.channel.gt:000
-- gw.weather.location.gt:000
+- gw.weather.location.gt:001
 - gw.weather.seasonal.template.gt:000
-- gw.weather.create.cmd:001
+- gw.weather.create.cmd:002
 - gw.weather.cmd.ack:000
 - gw.weather.cmd.nack:000
 - glitch:000
 - weather:000
 worklist:
   formats:
+    iana.timezone.str:
+      path: definitions/formats/iana.timezone.str.yaml
     left.right.dot:
       path: definitions/formats/left.right.dot.yaml
+    lowercase.token:
+      path: definitions/formats/lowercase.token.yaml
     non.empty.string:
       path: definitions/formats/non.empty.string.yaml
     non.negative.int:
@@ -40,11 +44,11 @@ worklist:
       '000':
         path: definitions/enums/gw.weather.forecast.fidelity/000.yaml
     gw1.quantity:
-      '002':
-        path: definitions/enums/gw1.quantity/002.yaml
+      '003':
+        path: definitions/enums/gw1.quantity/003.yaml
     gw1.unit:
-      '002':
-        path: definitions/enums/gw1.unit/002.yaml
+      '003':
+        path: definitions/enums/gw1.unit/003.yaml
     log.level:
       '000':
         path: definitions/enums/log.level/000.yaml
@@ -53,8 +57,8 @@ worklist:
       '000':
         path: definitions/types/glitch/000.yaml
     gw.weather.channel.gt:
-      '000':
-        path: definitions/types/gw.weather.channel.gt/000.yaml
+      '002':
+        path: definitions/types/gw.weather.channel.gt/002.yaml
     gw.weather.cmd.ack:
       '000':
         path: definitions/types/gw.weather.cmd.ack/000.yaml
@@ -62,26 +66,38 @@ worklist:
       '000':
         path: definitions/types/gw.weather.cmd.nack/000.yaml
     gw.weather.create.cmd:
-      '001':
-        path: definitions/types/gw.weather.create.cmd/001.yaml
+      '002':
+        path: definitions/types/gw.weather.create.cmd/002.yaml
     gw.weather.forecast:
+      '001':
+        path: definitions/types/gw.weather.forecast/001.yaml
+    gw.weather.forecast.binding:
       '000':
-        path: definitions/types/gw.weather.forecast/000.yaml
+        path: definitions/types/gw.weather.forecast.binding/000.yaml
     gw.weather.forecast.bundle.gt:
-      '000':
-        path: definitions/types/gw.weather.forecast.bundle.gt/000.yaml
+      '002':
+        path: definitions/types/gw.weather.forecast.bundle.gt/002.yaml
     gw.weather.forecast.channel.gt:
       '000':
         path: definitions/types/gw.weather.forecast.channel.gt/000.yaml
+    gw.weather.forecast.series:
+      '000':
+        path: definitions/types/gw.weather.forecast.series/000.yaml
     gw.weather.location.gt:
-      '000':
-        path: definitions/types/gw.weather.location.gt/000.yaml
+      '001':
+        path: definitions/types/gw.weather.location.gt/001.yaml
     gw.weather.observation:
+      '001':
+        path: definitions/types/gw.weather.observation/001.yaml
+    gw.weather.observation.reading:
       '000':
-        path: definitions/types/gw.weather.observation/000.yaml
+        path: definitions/types/gw.weather.observation.reading/000.yaml
     gw.weather.seasonal.template.gt:
       '000':
         path: definitions/types/gw.weather.seasonal.template.gt/000.yaml
+    gw.weather.station.gt:
+      '000':
+        path: definitions/types/gw.weather.station.gt/000.yaml
     weather:
       '000':
         path: definitions/types/weather/000.yaml

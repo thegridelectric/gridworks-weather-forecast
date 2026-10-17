@@ -1,5 +1,5 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
-$id: "https://schemas.electricity.works/enums/gw1.quantity/002"
+$id: "https://schemas.electricity.works/enums/gw1.quantity/003"
 
 title: "gw1.quantity"
 type: "string"
@@ -22,12 +22,14 @@ enum:
   - "Frequency"
   - "Time"
   - "WindSpeed"
+  - "Irradiance"
+  - "Currency"
 
 default: "Unknown"
 
 x-gridworks:
   owner: "gridworks-energy"
-  version: "002"
+  version: "003"
   value_descriptions:
     "Unknown": >
       Quantity classification has not been specified.
@@ -55,3 +57,7 @@ x-gridworks:
       Elapsed or absolute time quantity.
     "WindSpeed": >
       Speed of air movement at a measurement site.
+    "Irradiance": >
+      Radiant power incident on a surface per unit area (solar irradiance).
+    "Currency": >
+      An amount of money.
