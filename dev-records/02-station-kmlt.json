@@ -1,0 +1,12 @@
+{
+  "Alias": "kmlt",
+  "DisplayName": "Millinocket Municipal Airport ASOS (KMLT)",
+  "LatitudeMicrodegrees": 45647800,
+  "LongitudeMicrodegrees": -68685800,
+  "IcaoId": "KMLT",
+  "GhcnId": "USW00014610",
+  "Start": "2026-10-18T00:00:00Z",
+  "Id": "06d24265-46e3-4231-84b2-e93623ca02e5",
+  "TypeName": "gw.weather.station.gt",
+  "Version": "000"
+}

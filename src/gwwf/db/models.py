@@ -46,15 +46,28 @@ class LocationSql(Base):
     latitude_microdegrees: Mapped[int] = mapped_column(Integer)
     longitude_microdegrees: Mapped[int] = mapped_column(Integer)
     timezone: Mapped[str] = mapped_column(String)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class StationSql(Base):
+    """One gw.weather.station.gt record — an observing instrument."""
+
+    __tablename__ = "stations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    alias: Mapped[str] = mapped_column(String, unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String)
+    latitude_microdegrees: Mapped[int] = mapped_column(Integer)
+    longitude_microdegrees: Mapped[int] = mapped_column(Integer)
     icao_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    wban_id: Mapped[str | None] = mapped_column(String, nullable=True)
     ghcn_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    coop_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    wunderground_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class WeatherChannelSql(Base):
-    """One gw.weather.channel.gt record — an observed series."""
+    """One gw.weather.channel.gt record — an observed series on a station."""
 
     __tablename__ = "weather_channels"
 
@@ -63,7 +76,7 @@ class WeatherChannelSql(Base):
     display_name: Mapped[str] = mapped_column(String)
     quantity: Mapped[Quantity] = mapped_column(Enum(Quantity, name="quantity"))
     unit: Mapped[Unit] = mapped_column(Enum(Unit, name="unit"))
-    location_alias: Mapped[str] = mapped_column(String, ForeignKey("locations.alias"))
+    station_alias: Mapped[str] = mapped_column(String, ForeignKey("stations.alias"))
     emit_period_s: Mapped[int] = mapped_column(Integer)
     emit_offset_s: Mapped[int] = mapped_column(Integer)
     start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -91,12 +104,11 @@ class ForecastChannelSql(Base):
 
 
 class BundleSql(Base):
-    """One gw.weather.forecast.bundle.gt record, decomposed.
-
-    Channel columns are FKs to the canonical channel rows; loading a
-    bundle reconstructs the sema instance FROM those rows, so the
-    word's axioms (and copy-agreement with the canonical records) fire
-    on every load — the service-side half of the bundle contract.
+    """One gw.weather.forecast.bundle.gt record, decomposed: the bundle's
+    own fields here, its bindings in `bundle_bindings`. Loading a bundle
+    reconstructs the sema instance FROM the canonical channel rows, so
+    the word's axioms (and copy-agreement with the canonical records)
+    fire on every load — the service-side half of the bundle contract.
     """
 
     __tablename__ = "bundles"
@@ -105,22 +117,37 @@ class BundleSql(Base):
     name: Mapped[str] = mapped_column(String, unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String)
     location_alias: Mapped[str] = mapped_column(String, ForeignKey("locations.alias"))
-    temp_forecast_channel_name: Mapped[str] = mapped_column(
-        String, ForeignKey("forecast_channels.name")
-    )
-    temp_observation_channel_name: Mapped[str] = mapped_column(
-        String, ForeignKey("weather_channels.name")
-    )
-    wind_speed_forecast_channel_name: Mapped[str] = mapped_column(
-        String, ForeignKey("forecast_channels.name")
-    )
-    wind_speed_observation_channel_name: Mapped[str] = mapped_column(
-        String, ForeignKey("weather_channels.name")
-    )
     emit_period_s: Mapped[int] = mapped_column(Integer)
     emit_offset_s: Mapped[int] = mapped_column(Integer)
     start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class BundleBindingSql(Base):
+    """One gw.weather.forecast.binding of a bundle: the forecast channel
+    serving one series and the observed channel it targets, in the
+    bundle's binding order."""
+
+    __tablename__ = "bundle_bindings"
+
+    bundle_name: Mapped[str] = mapped_column(
+        String, ForeignKey("bundles.name"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    forecast_channel_name: Mapped[str] = mapped_column(
+        String, ForeignKey("forecast_channels.name")
+    )
+    observation_channel_name: Mapped[str] = mapped_column(
+        String, ForeignKey("weather_channels.name")
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "bundle_name",
+            "forecast_channel_name",
+            name="uq_bundle_bindings_bundle_forecast_channel",
+        ),
+    )
 
 
 class SeasonalTemplateSql(Base):
@@ -142,16 +169,22 @@ class SeasonalTemplateSql(Base):
 class ForecastSql(Base):
     """One sent gw.weather.forecast message — wire-form payload.
 
-    Surrogate uuid key; uniqueness on (bundle, SourceUpdatedTime,
-    FirstSliceStart) so re-sends of an identical window under a held
-    source revision no-op while every send-distinct message is a row.
+    The sent-forecast archive is keyed by the bundle name a message
+    went out under, a plain column: the archive is history, not a
+    reference into the record set. Surrogate
+    uuid key; uniqueness on (bundle, source revision, FirstSliceStart)
+    so re-sends of an identical window under held source revisions
+    no-op while every send-distinct message is a row. `source_revision`
+    joins every series' channel and source stamp in series order; the
+    stamps themselves are in the payload. `fidelity` is the lowest rung
+    among the message's series.
     """
 
     __tablename__ = "forecasts"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    bundle_name: Mapped[str] = mapped_column(String, ForeignKey("bundles.name"))
-    source_updated_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    bundle_name: Mapped[str] = mapped_column(String, index=True)
+    source_revision: Mapped[str] = mapped_column(String)
     first_slice_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     message_created_ms: Mapped[int] = mapped_column(BigInteger)
     fidelity: Mapped[WeatherForecastFidelity] = mapped_column(
@@ -164,7 +197,7 @@ class ForecastSql(Base):
     __table_args__ = (
         UniqueConstraint(
             "bundle_name",
-            "source_updated_time",
+            "source_revision",
             "first_slice_start",
             name="uq_forecasts_bundle_revision_window",
         ),
@@ -177,7 +210,8 @@ class SourceProductSql(Base):
     Keyed by acquisition identity (method + source locator). `series`
     holds the product's value lists keyed by series name (an interior
     structure with no sema word — `HourlyForecastProduct` in `nws.py`
-    is its type; note carried there); `store.py` maps row ↔ product.
+    and `IrradianceHourlyProduct` in `open_meteo.py` are its types,
+    told apart by the method); `store.py` maps row ↔ product.
     The extended horizon (broadcast + stored margin) lives here, in
     source terms, because a non-uniform channel grid has no defined
     extension of its own.
@@ -196,7 +230,7 @@ class SourceProductSql(Base):
 
 
 class LastObservationSql(Base):
-    """Per-location last real observation + the slot it published at.
+    """Per-station last real observation + the slot it published at.
 
     Makes latest-only and recovery interpolation survive a restart.
     `payload` is the wire-form gw.weather.observation message.
@@ -204,8 +238,8 @@ class LastObservationSql(Base):
 
     __tablename__ = "last_observations"
 
-    location_alias: Mapped[str] = mapped_column(
-        String, ForeignKey("locations.alias"), primary_key=True
+    station_alias: Mapped[str] = mapped_column(
+        String, ForeignKey("stations.alias"), primary_key=True
     )
     observation_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB)

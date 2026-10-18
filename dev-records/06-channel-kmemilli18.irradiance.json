@@ -1,0 +1,13 @@
+{
+  "Name": "kmemilli18.irradiance",
+  "DisplayName": "Millinocket global horizontal irradiance",
+  "Quantity": "Irradiance",
+  "Unit": "WattsPerSquareMeter",
+  "StationAlias": "kmemilli18",
+  "EmitPeriodS": 3600,
+  "EmitOffsetS": 0,
+  "Start": "2026-10-18T00:00:00Z",
+  "Id": "7e2b9d41-5c6a-4f08-b3e1-9a4d7c2f8e65",
+  "TypeName": "gw.weather.channel.gt",
+  "Version": "002"
+}

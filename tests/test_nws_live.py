@@ -10,13 +10,13 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tests.records import MILLINOCKET, MILLINOCKET_TEMPERATURE, MILLINOCKET_WINDSPEED
+from tests import records
 from gwwf.nws import (
-    CAR_GRIDPOINT,
-    KMLT_STATION,
     fetch_hourly_product,
     fetch_latest_observation,
+    gridpoint_from_locator,
 )
+from gwwf.sema.enums import Quantity
 
 pytestmark = pytest.mark.skipif(
     os.getenv("GWWF_LIVE_NWS") != "1",
@@ -29,25 +29,30 @@ def _age_seconds(iso_z: str) -> float:
 
 
 def test_latest_observation_live() -> None:
+    station = records.KMLT_STATION
+    assert station.icao_id is not None
     obs = fetch_latest_observation(
-        station=KMLT_STATION,
-        location_alias=MILLINOCKET,
-        temperature_channel=MILLINOCKET_TEMPERATURE,
-        windspeed_channel=MILLINOCKET_WINDSPEED,
+        station=station.icao_id,
+        station_alias=station.alias,
+        channels=[records.TEMPERATURE_CHANNEL, records.WINDSPEED_CHANNEL],
     )
     # KMLT is an AWOS station reporting every 5 minutes; an observation
     # older than 2 h means the adapter picked wrong (the legacy defect).
     assert _age_seconds(obs.observation_time) < 2 * 3600
     assert obs.interpolated is False
-    assert obs.location_alias == MILLINOCKET
-    assert obs.temp_channel_name == MILLINOCKET_TEMPERATURE
-    assert isinstance(obs.temp_value, int)
+    assert obs.station_alias == station.alias
+    by_quantity = {r.quantity: r for r in obs.reading_list}
+    assert by_quantity[Quantity.Temperature].channel_name == records.KMLT_TEMPERATURE
     round_tripped = type(obs).model_validate(obs.to_dict())
     assert round_tripped == obs
 
 
 def test_hourly_forecast_live() -> None:
-    product = fetch_hourly_product(gridpoint=CAR_GRIDPOINT, slices=48)
+    channel = records.TEMPERATURE_FORECAST_NWS_HOURLY_CHANNEL
+    assert channel.source_locator is not None
+    product = fetch_hourly_product(
+        gridpoint=gridpoint_from_locator(channel.source_locator), slices=48
+    )
     assert len(product.temperature_f) == 48
     assert len(product.wind_speed_mph) == 48
     assert product.period_s == 3600

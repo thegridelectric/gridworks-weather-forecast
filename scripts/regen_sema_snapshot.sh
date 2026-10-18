@@ -12,7 +12,8 @@
 # source of truth). The CLI refuses to run from a dirty sema checkout and
 # writes only under <sema>/output, so the snapshot is reproducible from
 # the sema commit the checkout sits on — check out the ref you intend to
-# ship from before running.
+# ship from before running. The CLI's default guard refuses a seed whose
+# closure reaches an unpublished word.
 #
 # Usage:
 #   scripts/regen_sema_snapshot.sh                 # sibling ../sema checkout
@@ -38,8 +39,8 @@ echo "==> seed:      ${SEED}"
 echo "==> package:   ${PACKAGE_NAME}"
 
 cd "${SEMA_REPO}"
-echo "==> sema snapshot prepare --allow-staged"
-uv run sema snapshot prepare --allow-staged "${SEED}"
+echo "==> sema snapshot prepare"
+uv run sema snapshot prepare "${SEED}"
 echo "==> sema snapshot build --package-name ${PACKAGE_NAME}"
 uv run sema snapshot build --package-name "${PACKAGE_NAME}"
 

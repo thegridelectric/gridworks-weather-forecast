@@ -1,0 +1,7 @@
+{
+  "TypeName": "gw.weather.observation.reading",
+  "Version": "000",
+  "ChannelName": "kmlt.temperature",
+  "Quantity": "Temperature",
+  "Value": 481
+}

@@ -1,0 +1,23 @@
+{
+  "TypeName": "gw.weather.observation",
+  "Version": "001",
+  "StationAlias": "kmlt",
+  "ObservationTime": "2026-10-18T13:35:00Z",
+  "Interpolated": false,
+  "ReadingList": [
+    {
+      "TypeName": "gw.weather.observation.reading",
+      "Version": "000",
+      "ChannelName": "kmlt.temperature",
+      "Quantity": "Temperature",
+      "Value": 481
+    },
+    {
+      "TypeName": "gw.weather.observation.reading",
+      "Version": "000",
+      "ChannelName": "kmlt.windspeed",
+      "Quantity": "WindSpeed",
+      "Value": 45
+    }
+  ]
+}

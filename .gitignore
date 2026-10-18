@@ -27,3 +27,6 @@ htmlcov/
 # Local secrets — NEVER commit
 .env
 g_node.json
+
+# dev-up.sh state (pids, logs)
+.dev/

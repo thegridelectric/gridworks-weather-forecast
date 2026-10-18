@@ -10,24 +10,25 @@ per render even when the data is hours older).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 import requests
 
-from gwwf.sema.property_format import LeftRightDot, UtcIso8601Seconds
-from gwwf.sema.types import WeatherObservation
+from gwwf.sema.enums import Quantity
+from gwwf.sema.property_format import LowercaseToken, UtcIso8601Seconds
+from gwwf.sema.types import (
+    WeatherChannelGt,
+    WeatherObservation,
+    WeatherObservationReading,
+)
+from gwwf.units import UNIT_SCALE
 
 NWS_BASE = "https://api.weather.gov"
 # NWS asks that clients identify themselves with a contact in the UA.
 USER_AGENT = "gridworks-weather-forecast (gridworks@gridworks-consulting.com)"
 TIMEOUT_S = 30
-
-# Acquisition facts for the standup station/gridpoint. The forecast
-# channel record's SourceLocator owns the gridpoint once the step-4
-# records land; nothing should parse facts out of these.
-KMLT_STATION = "KMLT"
-CAR_GRIDPOINT = "CAR/60,114"
 
 SECONDS_PER_SLICE = 3600
 
@@ -63,29 +64,31 @@ def _iso_seconds_z(iso: str) -> str:
     return datetime.fromisoformat(iso).astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _c_to_f_x100(temp_c: float) -> int:
-    return round((temp_c * 9 / 5 + 32) * 100)
+def _c_to_f_scaled(temp_c: float, scale: int) -> int:
+    return round((temp_c * 9 / 5 + 32) * scale)
 
 
-def _kmh_to_mph_x1000(speed_kmh: float) -> int:
-    return round(speed_kmh * 0.621371 * 1000)
+def _kmh_to_mph_scaled(speed_kmh: float, scale: int) -> int:
+    return round(speed_kmh * 0.621371 * scale)
 
 
 def fetch_latest_observation(
     *,
     station: str,
-    location_alias: LeftRightDot,
-    temperature_channel: LeftRightDot,
-    windspeed_channel: LeftRightDot,
+    station_alias: LowercaseToken,
+    channels: Sequence[WeatherChannelGt],
 ) -> WeatherObservation:
     """Newest usable station observation as a snapshot instance.
 
     Walks the newest-first feature list and returns the first feature
-    carrying a timestamp and a temperature value. WindSpeedValue is
-    omitted when the station reported no wind — absence is absence.
-    Raises ``NwsProductError`` when nothing usable is in the response
-    or a unit code is unexpected.
+    carrying a timestamp and a temperature value, with one reading per
+    channel whose quantity the feature reports (temperature always,
+    wind when the station reported it), each scaled per the channel's
+    Unit. A channel for a quantity NWS does not serve is absent from
+    the reading list. Raises ``NwsProductError`` when nothing usable
+    is in the response or a unit code is unexpected.
     """
+    by_quantity = {c.quantity: c for c in channels}
     data = _get(f"/stations/{station}/observations", params={"limit": 12})
     for feature in data.get("features", []):
         properties = feature.get("properties", {})
@@ -97,22 +100,39 @@ def fetch_latest_observation(
             raise NwsProductError(
                 f"unexpected temperature unit {temperature.get('unitCode')}"
             )
+        readings: list[WeatherObservationReading] = []
+        temperature_channel = by_quantity.get(Quantity.Temperature)
+        if temperature_channel is not None:
+            readings.append(
+                WeatherObservationReading(
+                    channel_name=temperature_channel.name,
+                    quantity=Quantity.Temperature,
+                    value=_c_to_f_scaled(
+                        temperature["value"], UNIT_SCALE[temperature_channel.unit]
+                    ),
+                )
+            )
         wind = properties.get("windSpeed", {})
-        wind_value = None
-        if wind.get("value") is not None:
+        wind_channel = by_quantity.get(Quantity.WindSpeed)
+        if wind_channel is not None and wind.get("value") is not None:
             if wind.get("unitCode") != "wmoUnit:km_h-1":
                 raise NwsProductError(
                     f"unexpected windSpeed unit {wind.get('unitCode')}"
                 )
-            wind_value = _kmh_to_mph_x1000(wind["value"])
+            readings.append(
+                WeatherObservationReading(
+                    channel_name=wind_channel.name,
+                    quantity=Quantity.WindSpeed,
+                    value=_kmh_to_mph_scaled(
+                        wind["value"], UNIT_SCALE[wind_channel.unit]
+                    ),
+                )
+            )
         return WeatherObservation(
-            location_alias=location_alias,
+            station_alias=station_alias,
             observation_time=_iso_seconds_z(timestamp),
             interpolated=False,
-            temp_channel_name=temperature_channel,
-            temp_value=_c_to_f_x100(temperature["value"]),
-            wind_speed_channel_name=windspeed_channel,
-            wind_speed_value=wind_value,
+            reading_list=readings,
         )
     raise NwsProductError(f"{station}: no usable observation in the newest 12")
 

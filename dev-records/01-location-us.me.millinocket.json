@@ -1,0 +1,9 @@
+{
+  "Alias": "us.me.millinocket",
+  "LatitudeMicrodegrees": 45647800,
+  "LongitudeMicrodegrees": -68685600,
+  "Timezone": "America/New_York",
+  "Id": "b0783c04-8db3-4102-84bb-37485c291cca",
+  "TypeName": "gw.weather.location.gt",
+  "Version": "001"
+}

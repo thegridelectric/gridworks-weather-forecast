@@ -1,0 +1,9 @@
+{
+  "TypeName": "g.node.gt",
+  "Version": "006",
+  "GNodeId": "5e9d2c7a-1b4f-4a83-9f6e-8c3d0a2b7e51",
+  "Alias": "d1.weather",
+  "BaseClass": "Logical",
+  "GNodeClass": "weather",
+  "Status": "Active"
+}

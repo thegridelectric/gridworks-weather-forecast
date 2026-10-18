@@ -4,7 +4,7 @@ Boots the real `WeatherActor` as `d1.weather` on a vanilla
 testcontainers RabbitMQ carrying the gwbase fabric, against a
 migrated testcontainers Postgres seeded with FAST channel records
 (5 s observation slots, 5 s forecast slots), driven by scripted
-fetchers. A slug-bound tap witnesses live emissions over the wire;
+adapters. A slug-bound tap witnesses live emissions over the wire;
 then the actor RESTARTS and the recovery replay bridges the outage
 with interpolated messages — latest-only and replay surviving the
 process boundary via the DB.
@@ -30,6 +30,7 @@ from sqlalchemy import delete
 
 from gwwf.config import GwwfSettings
 from gwwf.db.models import (
+    BundleBindingSql,
     BundleSql,
     ForecastChannelSql,
     ForecastSql,
@@ -37,6 +38,7 @@ from gwwf.db.models import (
     LocationSql,
     SeasonalTemplateSql,
     SourceProductSql,
+    StationSql,
     WeatherChannelSql,
 )
 from gwwf.create import send_create
@@ -49,6 +51,7 @@ from gwwf.db.store import (
 )
 from gwwf.grid import s_to_iso
 from gwwf.nws import HourlyForecastProduct
+from gwwf.open_meteo import IrradianceHourlyProduct
 from gwwf.record_broadcast import RecordWord
 from gwwf.sema.codec import SemaCodec
 from gwwf.sema.enums import Quantity, Unit
@@ -57,22 +60,30 @@ from gwwf.sema.types import (
     WeatherCmdAck,
     WeatherCmdNack,
     WeatherForecast,
+    WeatherForecastBinding,
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherLocationGt,
     WeatherObservation,
+    WeatherObservationReading,
+    WeatherStationGt,
 )
-from gwwf.weather_actor import WeatherActor
+from gwwf.weather_actor import ProductAdapter, WeatherActor
 
 pytestmark = pytest.mark.integration
 
 SERVICE_ALIAS = "d1.weather"
 LOCATION = "d1.test.loc"
-TEMP = "d1.test.loc.temperature"
-WIND = "d1.test.loc.windspeed"
-TEMP_FC = "d1.test.loc.temperature.forecast.fake.hourly"
-WIND_FC = "d1.test.loc.windspeed.forecast.fake.hourly"
-BUNDLE_NAME = "d1.test.loc.forecast.fake.hourly"
+STATION = "fake"
+TEMP = "fake.temperature"
+WIND = "fake.windspeed"
+IRR = "fake.irradiance"
+TEMP_FC = "fake.temperature.forecast.fake.hourly"
+WIND_FC = "fake.windspeed.forecast.fake.hourly"
+IRR_FC = "fake.irradiance.forecast.fake.hourly"
+BUNDLE_NAME = "d1.test.loc.raccoon"
+NWS_METHOD = "fake.method"
+IRRADIANCE_METHOD = "fake.irradiance.method"
 
 FAST_LOCATION = WeatherLocationGt(
     alias=LOCATION,
@@ -81,12 +92,20 @@ FAST_LOCATION = WeatherLocationGt(
     timezone="America/New_York",
     id=str(uuid.uuid4()),
 )
+FAST_STATION = WeatherStationGt(
+    alias=STATION,
+    display_name="layer2 station",
+    latitude_microdegrees=0,
+    longitude_microdegrees=0,
+    start="2026-08-11T00:00:00Z",
+    id=str(uuid.uuid4()),
+)
 FAST_TEMP = WeatherChannelGt(
     name=TEMP,
     display_name="layer2 temperature",
     quantity=Quantity.Temperature,
     unit=Unit.FahrenheitX100,
-    location_alias=LOCATION,
+    station_alias=STATION,
     emit_period_s=5,
     emit_offset_s=0,
     start="2026-08-11T00:00:00Z",
@@ -97,7 +116,18 @@ FAST_WIND = WeatherChannelGt(
     display_name="layer2 wind",
     quantity=Quantity.WindSpeed,
     unit=Unit.MilesPerHourX1000,
-    location_alias=LOCATION,
+    station_alias=STATION,
+    emit_period_s=5,
+    emit_offset_s=0,
+    start="2026-08-11T00:00:00Z",
+    id=str(uuid.uuid4()),
+)
+FAST_IRR = WeatherChannelGt(
+    name=IRR,
+    display_name="layer2 irradiance",
+    quantity=Quantity.Irradiance,
+    unit=Unit.WattsPerSquareMeter,
+    station_alias=STATION,
     emit_period_s=5,
     emit_offset_s=0,
     start="2026-08-11T00:00:00Z",
@@ -105,12 +135,16 @@ FAST_WIND = WeatherChannelGt(
 )
 
 
-def _fast_fc(name: str, target: str) -> WeatherForecastChannelGt:
+def _fast_fc(
+    name: str, target: str, method: str = NWS_METHOD
+) -> WeatherForecastChannelGt:
+    """A method names an adapter's product, so the irradiance channel
+    (a different product) has its own."""
     return WeatherForecastChannelGt(
         name=name,
         target_channel_name=target,
         forecaster="fake.model",
-        method="fake.method",
+        method=method,
         source_locator="fake.0.0",
         total_slices=3,
         slice_duration_s_list=[300, 600, 300],
@@ -122,15 +156,23 @@ def _fast_fc(name: str, target: str) -> WeatherForecastChannelGt:
 
 FAST_TEMP_FC = _fast_fc(TEMP_FC, TEMP)
 FAST_WIND_FC = _fast_fc(WIND_FC, WIND)
-# Referential order: location → channels → bundle (defined below).
+FAST_IRR_FC = _fast_fc(IRR_FC, IRR, method=IRRADIANCE_METHOD)
+# Referential order: location, station → channels → bundle (defined below).
 FAST_BUNDLE = WeatherForecastBundleGt(
     name=BUNDLE_NAME,
     display_name="layer2 bundle",
     location_alias=LOCATION,
-    temp_forecast_channel=FAST_TEMP_FC,
-    temp_observation_channel=FAST_TEMP,
-    wind_speed_forecast_channel=FAST_WIND_FC,
-    wind_speed_observation_channel=FAST_WIND,
+    binding_list=[
+        WeatherForecastBinding(
+            forecast_channel=FAST_TEMP_FC, observation_channel=FAST_TEMP
+        ),
+        WeatherForecastBinding(
+            forecast_channel=FAST_WIND_FC, observation_channel=FAST_WIND
+        ),
+        WeatherForecastBinding(
+            forecast_channel=FAST_IRR_FC, observation_channel=FAST_IRR
+        ),
+    ],
     emit_period_s=5,
     emit_offset_s=2,
     start="2026-08-12T00:00:00Z",
@@ -138,10 +180,13 @@ FAST_BUNDLE = WeatherForecastBundleGt(
 )
 FAST_RECORDS = (
     FAST_LOCATION,
+    FAST_STATION,
     FAST_TEMP,
     FAST_WIND,
+    FAST_IRR,
     FAST_TEMP_FC,
     FAST_WIND_FC,
+    FAST_IRR_FC,
     FAST_BUNDLE,
 )
 
@@ -187,13 +232,17 @@ def g_node_file(tmp_path: Path) -> Path:
 
 def observation(epoch_s: int, temp: int, wind: int) -> WeatherObservation:
     return WeatherObservation(
-        location_alias=LOCATION,
+        station_alias=STATION,
         observation_time=s_to_iso(epoch_s),
         interpolated=False,
-        temp_channel_name=TEMP,
-        temp_value=temp,
-        wind_speed_channel_name=WIND,
-        wind_speed_value=wind,
+        reading_list=[
+            WeatherObservationReading(
+                channel_name=TEMP, quantity=Quantity.Temperature, value=temp
+            ),
+            WeatherObservationReading(
+                channel_name=WIND, quantity=Quantity.WindSpeed, value=wind
+            ),
+        ],
     )
 
 
@@ -209,6 +258,36 @@ def fake_product(now_s: int) -> HourlyForecastProduct:
     )
 
 
+def fake_irradiance(now_s: int) -> IrradianceHourlyProduct:
+    start = (now_s // 300) * 300
+    return IrradianceHourlyProduct(
+        update_time=s_to_iso(start),
+        generated_at=s_to_iso(start),
+        first_slice_start=s_to_iso(start),
+        period_s=300,
+        irradiance_w_m2=[10 * i for i in range(40)],
+    )
+
+
+def fake_adapters(now_s: int) -> dict[str, ProductAdapter]:
+    """The two fake Methods' adapters: scripted products, no network."""
+    return {
+        NWS_METHOD: ProductAdapter(
+            fetch_for=lambda channel: lambda slices: fake_product(now_s),
+            kind=HourlyForecastProduct,
+            series={
+                Quantity.Temperature: lambda p: p.temperature_f,
+                Quantity.WindSpeed: lambda p: p.wind_speed_mph,
+            },
+        ),
+        IRRADIANCE_METHOD: ProductAdapter(
+            fetch_for=lambda channel: lambda slices: fake_irradiance(now_s),
+            kind=IrradianceHourlyProduct,
+            series={Quantity.Irradiance: lambda p: p.irradiance_w_m2},
+        ),
+    }
+
+
 class Layer2Tap(ActorBase):
     """Slug-bound witness for the streams AND the record broadcasts
     (records ride their own name; the bundle broadcast is tail-less)."""
@@ -222,13 +301,16 @@ class Layer2Tap(ActorBase):
 
     def local_rabbit_startup(self) -> None:
         for type_name, radio in [
-            (WeatherObservation.type_name_value(), LOCATION),
+            (WeatherObservation.type_name_value(), STATION),
             (WeatherForecast.type_name_value(), BUNDLE_NAME),
             (WeatherLocationGt.type_name_value(), LOCATION),
+            (WeatherStationGt.type_name_value(), STATION),
             (WeatherChannelGt.type_name_value(), TEMP),
             (WeatherChannelGt.type_name_value(), WIND),
+            (WeatherChannelGt.type_name_value(), IRR),
             (WeatherForecastChannelGt.type_name_value(), TEMP_FC),
             (WeatherForecastChannelGt.type_name_value(), WIND_FC),
+            (WeatherForecastChannelGt.type_name_value(), IRR_FC),
             (WeatherForecastBundleGt.type_name_value(), None),
         ]:
             self.subscribe_broadcast(
@@ -261,12 +343,14 @@ def _clear_weather_tables(sessions) -> None:
     with sessions() as session:
         for model in (
             ForecastSql,
+            BundleBindingSql,
             BundleSql,
             LastObservationSql,
             SourceProductSql,
             ForecastChannelSql,
             WeatherChannelSql,
             SeasonalTemplateSql,
+            StationSql,
             LocationSql,
         ):
             session.execute(delete(model))
@@ -306,8 +390,8 @@ def test_d1_weather_boots_emits_and_recovers_across_restart(
         first_observation = observation(now - 2, temp=6000, wind=3000)
         actor1 = WeatherActor(
             settings,
-            fetch_observation=lambda: first_observation,
-            fetch_product=lambda slices: fake_product(now),
+            fetch_observation=lambda station: first_observation,
+            adapters=fake_adapters(now),
         )
         actor1.start()
         try:
@@ -322,7 +406,7 @@ def test_d1_weather_boots_emits_and_recovers_across_restart(
 
         with sessions() as session:
             assert latest_forecast(session, BUNDLE_NAME) is not None
-            stored = load_last_observation(session, LOCATION)
+            stored = load_last_observation(session, STATION)
             assert stored is not None
             assert stored.observation == first_observation
 
@@ -332,8 +416,8 @@ def test_d1_weather_boots_emits_and_recovers_across_restart(
         second_observation = observation(second_time, temp=6900, wind=4800)
         actor2 = WeatherActor(
             settings,
-            fetch_observation=lambda: second_observation,
-            fetch_product=lambda slices: fake_product(now),
+            fetch_observation=lambda station: second_observation,
+            adapters=fake_adapters(now),
         )
         actor2.start()
         try:
@@ -401,8 +485,8 @@ def test_create_round_mints_records_onto_empty_service(
     live_observation = observation(now - 2, temp=6100, wind=3100)
     actor = WeatherActor(  # empty DB: boots idle, never refuses
         settings,
-        fetch_observation=lambda: live_observation,
-        fetch_product=lambda slices: fake_product(now),
+        fetch_observation=lambda station: live_observation,
+        adapters=fake_adapters(now),
     )
     actor.start()
     try:
@@ -446,3 +530,48 @@ def test_create_round_mints_records_onto_empty_service(
 
 def record_key(record: RecordWord) -> str:
     return record.id
+
+
+def test_station_without_observation_path_still_forecasts(
+    rabbit_url, pg_url, migrated_engine, tmp_path
+) -> None:
+    """A station with no IcaoId has no NWS observation path (the
+    personal irradiance station), so it gets no observation stream;
+    the bundles that bind its channels still forecast."""
+    provision_topology(rabbit_url)
+    settings = GwwfSettings(
+        rabbit=RabbitBrokerClient(url=SecretStr(rabbit_url)),
+        db_url=SecretStr(pg_url),
+        g_node_path=g_node_file(tmp_path),
+        service_alias=SERVICE_ALIAS,
+        service_name="weather-forecast-l2",
+    )
+    sessions = session_factory_from(settings)
+    _clear_weather_tables(sessions)
+    with sessions() as session:
+        for record in FAST_RECORDS:
+            insert_record(session, record)
+
+    tap = Layer2Tap(
+        ServiceSettings(
+            rabbit=settings.rabbit,
+            service_alias="d1.wx.l2tap",
+            service_name="gwwf-l2-tap",
+        )
+    )
+    tap.start()
+    try:
+        wait_for(lambda: tap.consuming, 10, "tap consuming")
+        time.sleep(0.5)
+        # No fetch_observation override: the default NWS wiring applies.
+        actor = WeatherActor(settings, adapters=fake_adapters(int(time.time())))
+        actor.start()
+        try:
+            wait_for(lambda: actor.consuming, 10, "actor consuming")
+            wait_for(lambda: tap.forecasts, 30, "forecast with no observation path")
+            assert tap.observations == []
+        finally:
+            actor.stop()
+    finally:
+        tap.stop()
+        _clear_weather_tables(sessions)

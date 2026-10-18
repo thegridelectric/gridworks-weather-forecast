@@ -5,11 +5,15 @@ from gwwf.sema.types.weather_cmd_ack import WeatherCmdAck
 from gwwf.sema.types.weather_cmd_nack import WeatherCmdNack
 from gwwf.sema.types.weather_create_cmd import WeatherCreateCmd
 from gwwf.sema.types.weather_forecast import WeatherForecast
+from gwwf.sema.types.weather_forecast_binding import WeatherForecastBinding
 from gwwf.sema.types.weather_forecast_bundle_gt import WeatherForecastBundleGt
 from gwwf.sema.types.weather_forecast_channel_gt import WeatherForecastChannelGt
+from gwwf.sema.types.weather_forecast_series import WeatherForecastSeries
 from gwwf.sema.types.weather_location_gt import WeatherLocationGt
 from gwwf.sema.types.weather_observation import WeatherObservation
+from gwwf.sema.types.weather_observation_reading import WeatherObservationReading
 from gwwf.sema.types.weather_seasonal_template_gt import WeatherSeasonalTemplateGt
+from gwwf.sema.types.weather_station_gt import WeatherStationGt
 
 __all__ = [
     "Glitch",
@@ -19,9 +23,13 @@ __all__ = [
     "WeatherCmdNack",
     "WeatherCreateCmd",
     "WeatherForecast",
+    "WeatherForecastBinding",
     "WeatherForecastBundleGt",
     "WeatherForecastChannelGt",
+    "WeatherForecastSeries",
     "WeatherLocationGt",
     "WeatherObservation",
+    "WeatherObservationReading",
     "WeatherSeasonalTemplateGt",
+    "WeatherStationGt",
 ]

@@ -1,25 +1,21 @@
 from typing import Literal
 from pydantic import StrictInt, model_validator
 from gwwf.sema.base import SemaType
+from gwwf.sema.property_format import IanaTimezoneStr
 from gwwf.sema.property_format import LeftRightDot
-from gwwf.sema.property_format import NonEmptyString
 from gwwf.sema.property_format import UUID4Str
 
 
 class WeatherLocationGt(SemaType):
-    """Sema: https://schemas.electricity.works/types/gw.weather.location.gt/000"""
+    """Sema: https://schemas.electricity.works/types/gw.weather.location.gt/001"""
 
     alias: LeftRightDot
     latitude_microdegrees: StrictInt
     longitude_microdegrees: StrictInt
-    timezone: NonEmptyString
-    icao_id: NonEmptyString | None = None
-    wban_id: NonEmptyString | None = None
-    ghcn_id: NonEmptyString | None = None
-    coop_id: NonEmptyString | None = None
+    timezone: IanaTimezoneStr
     id: UUID4Str
     type_name: Literal["gw.weather.location.gt"] = "gw.weather.location.gt"
-    version: Literal["000"] = "000"
+    version: Literal["001"] = "001"
 
     @model_validator(mode="after")
     def check_axiom_1(self) -> "WeatherLocationGt":
@@ -30,12 +26,12 @@ class WeatherLocationGt(SemaType):
         """
         if abs(self.latitude_microdegrees) > 90_000_000:
             raise ValueError(
-                "Axiom 1 (CoordinateBounds) failed: a. |LatitudeMicrodegrees| "
+                "Axiom 1 (CoordinateBounds, clause a) failed: |LatitudeMicrodegrees| "
                 f"must be at most 90000000; got {self.latitude_microdegrees}."
             )
         if abs(self.longitude_microdegrees) > 180_000_000:
             raise ValueError(
-                "Axiom 1 (CoordinateBounds) failed: b. |LongitudeMicrodegrees| "
+                "Axiom 1 (CoordinateBounds, clause b) failed: |LongitudeMicrodegrees| "
                 f"must be at most 180000000; got {self.longitude_microdegrees}."
             )
         return self

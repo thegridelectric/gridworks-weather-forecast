@@ -1,0 +1,13 @@
+{
+  "Name": "kmlt.temperature",
+  "DisplayName": "Millinocket outdoor air temperature",
+  "Quantity": "Temperature",
+  "Unit": "FahrenheitX10",
+  "StationAlias": "kmlt",
+  "EmitPeriodS": 3600,
+  "EmitOffsetS": 0,
+  "Start": "2026-10-18T00:00:00Z",
+  "Id": "f2349aac-7f49-46bf-9dc2-e15883a121d7",
+  "TypeName": "gw.weather.channel.gt",
+  "Version": "002"
+}

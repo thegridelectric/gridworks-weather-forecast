@@ -7,7 +7,11 @@ from pydantic import BeforeValidator, Field, StrictInt
 
 
 # --- patterns ---
+IANA_TIMEZONE_STR_PATTERN = re.compile(r"^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$")
+
 LEFT_RIGHT_DOT_PATTERN = re.compile(r"^[a-z][a-z0-9]*(\.[a-z0-9]+)*$")
+
+LOWERCASE_TOKEN_PATTERN = re.compile(r"^[a-z][a-z0-9]*$")
 
 SPACEHEAT_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 
@@ -21,12 +25,32 @@ UUID4_STR_PATTERN = re.compile(
 
 
 # --- methods ---
+def is_iana_timezone_str(v: str) -> str:
+    if not isinstance(v, str):
+        raise ValueError(f"<{v}>: iana.timezone.str must be a string.")
+
+    if not IANA_TIMEZONE_STR_PATTERN.fullmatch(v):
+        raise ValueError(f"<{v}>: Fails iana.timezone.str format.")
+
+    return v
+
+
 def is_left_right_dot(v: str) -> str:
     if not isinstance(v, str):
         raise ValueError(f"<{v}>: LeftRightDot must be a string.")
 
     if not LEFT_RIGHT_DOT_PATTERN.fullmatch(v):
         raise ValueError(f"<{v}>: Fails LeftRightDot format.")
+
+    return v
+
+
+def is_lowercase_token(v: str) -> str:
+    if not isinstance(v, str):
+        raise ValueError(f"<{v}>: LowercaseToken must be a string.")
+
+    if not LOWERCASE_TOKEN_PATTERN.fullmatch(v):
+        raise ValueError(f"<{v}>: Fails LowercaseToken format.")
 
     return v
 
@@ -121,9 +145,19 @@ def is_uuid4_str(v: str) -> str:
 
 
 # --- annotated types ---
+IanaTimezoneStr = Annotated[
+    str,
+    BeforeValidator(is_iana_timezone_str),
+]
+
 LeftRightDot = Annotated[
     str,
     BeforeValidator(is_left_right_dot),
+]
+
+LowercaseToken = Annotated[
+    str,
+    BeforeValidator(is_lowercase_token),
 ]
 
 NonEmptyString = Annotated[

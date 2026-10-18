@@ -8,8 +8,9 @@ columns.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import Any, NamedTuple, Protocol, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 import uuid
 
 from gwwf.db.models import (
+    BundleBindingSql,
     BundleSql,
     ForecastChannelSql,
     ForecastSql,
@@ -25,20 +27,42 @@ from gwwf.db.models import (
     LocationSql,
     SeasonalTemplateSql,
     SourceProductSql,
+    StationSql,
     WeatherChannelSql,
 )
-from gwwf.nws import HourlyForecastProduct
+from gwwf.fidelity import lowest_fidelity
 from gwwf.record_broadcast import RecordWord
 from gwwf.sema.codec import default_codec
 from gwwf.sema.types import (
     WeatherChannelGt,
     WeatherForecast,
+    WeatherForecastBinding,
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherLocationGt,
     WeatherObservation,
     WeatherSeasonalTemplateGt,
+    WeatherStationGt,
 )
+
+
+class CachedProduct(Protocol):
+    """What the source-product cache keeps of an adapter's product: the
+    three stamps as columns and every list field as a named series.
+    The adapters' NamedTuple products satisfy this structurally."""
+
+    @property
+    def update_time(self) -> str: ...
+    @property
+    def generated_at(self) -> str: ...
+    @property
+    def first_slice_start(self) -> str: ...
+    @property
+    def period_s(self) -> int: ...
+    def _asdict(self) -> dict[str, Any]: ...
+
+
+P = TypeVar("P", bound=CachedProduct)
 
 
 def _dt(iso: str) -> datetime:
@@ -54,74 +78,90 @@ def _iso(dt: datetime) -> str:
 # ----------------------------------------------------------------------
 
 
-def _record_row(
-    record: RecordWord,
-) -> (
-    LocationSql
-    | WeatherChannelSql
-    | ForecastChannelSql
-    | BundleSql
-    | SeasonalTemplateSql
-):
+def _record_rows(record: RecordWord) -> list[Any]:
     if isinstance(record, WeatherLocationGt):
-        return LocationSql(
-            id=record.id,
-            alias=record.alias,
-            latitude_microdegrees=record.latitude_microdegrees,
-            longitude_microdegrees=record.longitude_microdegrees,
-            timezone=record.timezone,
-            icao_id=record.icao_id,
-            wban_id=record.wban_id,
-            ghcn_id=record.ghcn_id,
-            coop_id=record.coop_id,
-        )
+        return [
+            LocationSql(
+                id=record.id,
+                alias=record.alias,
+                latitude_microdegrees=record.latitude_microdegrees,
+                longitude_microdegrees=record.longitude_microdegrees,
+                timezone=record.timezone,
+            )
+        ]
+    if isinstance(record, WeatherStationGt):
+        return [
+            StationSql(
+                id=record.id,
+                alias=record.alias,
+                display_name=record.display_name,
+                latitude_microdegrees=record.latitude_microdegrees,
+                longitude_microdegrees=record.longitude_microdegrees,
+                icao_id=record.icao_id,
+                ghcn_id=record.ghcn_id,
+                wunderground_id=record.wunderground_id,
+                start=_dt(record.start),
+            )
+        ]
     if isinstance(record, WeatherChannelGt):
-        return WeatherChannelSql(
+        return [
+            WeatherChannelSql(
+                id=record.id,
+                name=record.name,
+                display_name=record.display_name,
+                quantity=record.quantity,
+                unit=record.unit,
+                station_alias=record.station_alias,
+                emit_period_s=record.emit_period_s,
+                emit_offset_s=record.emit_offset_s,
+                start=_dt(record.start),
+            )
+        ]
+    if isinstance(record, WeatherForecastChannelGt):
+        return [
+            ForecastChannelSql(
+                id=record.id,
+                name=record.name,
+                target_channel_name=record.target_channel_name,
+                forecaster=record.forecaster,
+                method=record.method,
+                source_locator=record.source_locator,
+                total_slices=record.total_slices,
+                slice_duration_s_list=record.slice_duration_s_list,
+                forecast_duration_minutes=record.forecast_duration_minutes,
+                start=_dt(record.start),
+            )
+        ]
+    if isinstance(record, WeatherSeasonalTemplateGt):
+        return [
+            SeasonalTemplateSql(
+                id=record.id,
+                location_alias=record.location_alias,
+                temp_by_month=record.temp_by_month,
+                start=_dt(record.start),
+            )
+        ]
+    rows: list[Any] = [
+        BundleSql(
             id=record.id,
             name=record.name,
             display_name=record.display_name,
-            quantity=record.quantity,
-            unit=record.unit,
             location_alias=record.location_alias,
             emit_period_s=record.emit_period_s,
             emit_offset_s=record.emit_offset_s,
             start=_dt(record.start),
         )
-    if isinstance(record, WeatherForecastChannelGt):
-        return ForecastChannelSql(
-            id=record.id,
-            name=record.name,
-            target_channel_name=record.target_channel_name,
-            forecaster=record.forecaster,
-            method=record.method,
-            source_locator=record.source_locator,
-            total_slices=record.total_slices,
-            slice_duration_s_list=record.slice_duration_s_list,
-            forecast_duration_minutes=record.forecast_duration_minutes,
-            start=_dt(record.start),
+    ]
+    rows += [
+        BundleBindingSql(
+            bundle_name=record.name,
+            position=position,
+            forecast_channel_name=binding.forecast_channel.name,
+            observation_channel_name=binding.observation_channel.name,
         )
-    if isinstance(record, WeatherSeasonalTemplateGt):
-        return SeasonalTemplateSql(
-            id=record.id,
-            location_alias=record.location_alias,
-            temp_by_month=record.temp_by_month,
-            start=_dt(record.start),
-        )
-    return BundleSql(
-        id=record.id,
-        name=record.name,
-        display_name=record.display_name,
-        location_alias=record.location_alias,
-        temp_forecast_channel_name=record.temp_forecast_channel.name,
-        temp_observation_channel_name=record.temp_observation_channel.name,
-        wind_speed_forecast_channel_name=record.wind_speed_forecast_channel.name,
-        wind_speed_observation_channel_name=(
-            record.wind_speed_observation_channel.name
-        ),
-        emit_period_s=record.emit_period_s,
-        emit_offset_s=record.emit_offset_s,
-        start=_dt(record.start),
-    )
+        for position, binding in enumerate(record.binding_list)
+    ]
+    return rows
 
 
 def _require_embedded_agreement(
@@ -133,12 +173,10 @@ def _require_embedded_agreement(
         c.name: c for c in load_weather_channels(session)
     }
     canonical.update({c.name: c for c in load_forecast_channels(session)})
-    for embedded in (
-        bundle.temp_forecast_channel,
-        bundle.temp_observation_channel,
-        bundle.wind_speed_forecast_channel,
-        bundle.wind_speed_observation_channel,
-    ):
+    embedded_channels: list[WeatherChannelGt | WeatherForecastChannelGt] = []
+    for binding in bundle.binding_list:
+        embedded_channels += [binding.forecast_channel, binding.observation_channel]
+    for embedded in embedded_channels:
         stored = canonical.get(embedded.name)
         if stored is None:
             raise ValueError(
@@ -153,14 +191,18 @@ def _require_embedded_agreement(
 def insert_record(session: Session, record: RecordWord) -> None:
     """Insert-only create — records are durable identities, never
     upserted. A duplicate id/name or a missing reference (referential
-    order: location → channels → bundle, location → template) raises
-    IntegrityError; a
-    bundle whose embedded channel copies disagree with the canonical
-    rows raises ValueError before anything is written."""
+    order: location, station → channels → bundle, location → template)
+    raises IntegrityError; a bundle whose embedded channel copies
+    disagree with the canonical rows raises ValueError before anything
+    is written."""
     if isinstance(record, WeatherForecastBundleGt):
         _require_embedded_agreement(session, record)
-    session.add(_record_row(record))
+    head, *rest = _record_rows(record)
     try:
+        session.add(head)
+        if rest:
+            session.flush()  # the bundle row before the bindings that key it
+            session.add_all(rest)
         session.commit()
     except Exception:
         session.rollback()
@@ -174,13 +216,26 @@ def load_locations(session: Session) -> list[WeatherLocationGt]:
             latitude_microdegrees=row.latitude_microdegrees,
             longitude_microdegrees=row.longitude_microdegrees,
             timezone=row.timezone,
-            icao_id=row.icao_id,
-            wban_id=row.wban_id,
-            ghcn_id=row.ghcn_id,
-            coop_id=row.coop_id,
             id=row.id,
         )
         for row in session.scalars(select(LocationSql).order_by(LocationSql.alias))
+    ]
+
+
+def load_stations(session: Session) -> list[WeatherStationGt]:
+    return [
+        WeatherStationGt(
+            alias=row.alias,
+            display_name=row.display_name,
+            latitude_microdegrees=row.latitude_microdegrees,
+            longitude_microdegrees=row.longitude_microdegrees,
+            icao_id=row.icao_id,
+            ghcn_id=row.ghcn_id,
+            wunderground_id=row.wunderground_id,
+            start=_iso(row.start),
+            id=row.id,
+        )
+        for row in session.scalars(select(StationSql).order_by(StationSql.alias))
     ]
 
 
@@ -191,7 +246,7 @@ def load_weather_channels(session: Session) -> list[WeatherChannelGt]:
             display_name=row.display_name,
             quantity=row.quantity,
             unit=row.unit,
-            location_alias=row.location_alias,
+            station_alias=row.station_alias,
             emit_period_s=row.emit_period_s,
             emit_offset_s=row.emit_offset_s,
             start=_iso(row.start),
@@ -263,21 +318,26 @@ def load_bundles(session: Session) -> list[WeatherForecastBundleGt]:
     that the decomposed record still holds together."""
     forecast_by_name = {c.name: c for c in load_forecast_channels(session)}
     observation_by_name = {c.name: c for c in load_weather_channels(session)}
+    bindings_by_bundle: dict[str, list[WeatherForecastBinding]] = {}
+    for binding_row in session.scalars(
+        select(BundleBindingSql).order_by(
+            BundleBindingSql.bundle_name, BundleBindingSql.position
+        )
+    ):
+        bindings_by_bundle.setdefault(binding_row.bundle_name, []).append(
+            WeatherForecastBinding(
+                forecast_channel=forecast_by_name[binding_row.forecast_channel_name],
+                observation_channel=observation_by_name[
+                    binding_row.observation_channel_name
+                ],
+            )
+        )
     return [
         WeatherForecastBundleGt(
             name=row.name,
             display_name=row.display_name,
             location_alias=row.location_alias,
-            temp_forecast_channel=forecast_by_name[row.temp_forecast_channel_name],
-            temp_observation_channel=observation_by_name[
-                row.temp_observation_channel_name
-            ],
-            wind_speed_forecast_channel=forecast_by_name[
-                row.wind_speed_forecast_channel_name
-            ],
-            wind_speed_observation_channel=observation_by_name[
-                row.wind_speed_observation_channel_name
-            ],
+            binding_list=bindings_by_bundle.get(row.name, []),
             emit_period_s=row.emit_period_s,
             emit_offset_s=row.emit_offset_s,
             start=_iso(row.start),
@@ -287,18 +347,27 @@ def load_bundles(session: Session) -> list[WeatherForecastBundleGt]:
     ]
 
 
+def source_revision(message: WeatherForecast) -> str:
+    """The source revisions behind a message, one token per series in
+    series order."""
+    return "|".join(
+        f"{series.channel_name}@{series.source_updated_time}"
+        for series in message.series_list
+    )
+
+
 def store_forecast(session: Session, message: WeatherForecast) -> None:
     """One row per send-distinct message; re-sends of an identical
-    window under a held source revision no-op."""
+    window under held source revisions no-op."""
     statement = (
         pg_insert(ForecastSql)
         .values(
             id=str(uuid.uuid4()),
             bundle_name=message.bundle_name,
-            source_updated_time=_dt(message.source_updated_time),
+            source_revision=source_revision(message),
             first_slice_start=_dt(message.first_slice_start),
             message_created_ms=message.message_created_ms,
-            fidelity=message.fidelity,
+            fidelity=lowest_fidelity(message),
             payload=message.to_dict(),
         )
         .on_conflict_do_nothing(constraint="uq_forecasts_bundle_revision_window")
@@ -329,8 +398,10 @@ def save_product(
     *,
     method: str,
     source_locator: str,
-    product: HourlyForecastProduct,
+    product: CachedProduct,
 ) -> None:
+    """The product's list fields are the row's series, keyed by their
+    own names; the four stamps are columns."""
     values = dict(
         method=method,
         source_locator=source_locator,
@@ -339,8 +410,9 @@ def save_product(
         first_slice_start=_dt(product.first_slice_start),
         period_s=product.period_s,
         series={
-            "temperature_f": product.temperature_f,
-            "wind_speed_mph": product.wind_speed_mph,
+            name: value
+            for name, value in product._asdict().items()
+            if isinstance(value, list)
         },
     )
     statement = pg_insert(SourceProductSql).values(**values)
@@ -354,18 +426,19 @@ def save_product(
 
 
 def load_product(
-    session: Session, *, method: str, source_locator: str
-) -> HourlyForecastProduct | None:
+    session: Session, *, method: str, source_locator: str, kind: Callable[..., P]
+) -> P | None:
+    """The cached product of one acquisition as ``kind`` (the product
+    type the method's adapter produces)."""
     row = session.get(SourceProductSql, (method, source_locator))
     if row is None:
         return None
-    return HourlyForecastProduct(
+    return kind(
         update_time=_iso(row.update_time),
         generated_at=row.generated_at,
         first_slice_start=_iso(row.first_slice_start),
         period_s=row.period_s,
-        temperature_f=row.series["temperature_f"],
-        wind_speed_mph=row.series["wind_speed_mph"],
+        **row.series,
     )
 
 
@@ -375,7 +448,7 @@ def load_product(
 
 
 class StoredObservation(NamedTuple):
-    """The last real observation for a location + the slot it published
+    """The last real observation for a station + the slot it published
     at (the replay bound). NOTE: interior record, no sema word — the
     observation itself is the word; the pairing is scheduler state.
     """
@@ -387,12 +460,11 @@ class StoredObservation(NamedTuple):
 def save_last_observation(
     session: Session,
     *,
-    location_alias: str,
     observation: WeatherObservation,
     published_slot: int,
 ) -> None:
     values = dict(
-        location_alias=location_alias,
+        station_alias=observation.station_alias,
         observation_time=_dt(observation.observation_time),
         payload=observation.to_dict(),
         published_slot=published_slot,
@@ -400,16 +472,16 @@ def save_last_observation(
     statement = pg_insert(LastObservationSql).values(**values)
     session.execute(
         statement.on_conflict_do_update(
-            index_elements=[LastObservationSql.location_alias], set_=values
+            index_elements=[LastObservationSql.station_alias], set_=values
         )
     )
     session.commit()
 
 
 def load_last_observation(
-    session: Session, location_alias: str
+    session: Session, station_alias: str
 ) -> StoredObservation | None:
-    row = session.get(LastObservationSql, location_alias)
+    row = session.get(LastObservationSql, station_alias)
     if row is None:
         return None
     return StoredObservation(
