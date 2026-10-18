@@ -84,11 +84,6 @@ types:
     versioning_strategy: literal
     versions:
       '000': definitions/types/gw.weather.station.gt/000.yaml
-  weather:
-    latest_version: '000'
-    versioning_strategy: literal
-    versions:
-      '000': definitions/types/weather/000.yaml
 enums:
   gw.weather.forecast.fidelity:
     enum_type: versioned
@@ -118,5 +113,4 @@ formats:
   spaceheat.name: definitions/formats/spaceheat.name.yaml
   utc.iso8601.seconds: definitions/formats/utc.iso8601.seconds.yaml
   utc.milliseconds: definitions/formats/utc.milliseconds.yaml
-  utc.seconds: definitions/formats/utc.seconds.yaml
   uuid4.str: definitions/formats/uuid4.str.yaml

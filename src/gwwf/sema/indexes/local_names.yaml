@@ -19,4 +19,3 @@ types:
   gw.weather.observation.reading: weather.observation.reading
   gw.weather.seasonal.template.gt: weather.seasonal.template.gt
   gw.weather.station.gt: weather.station.gt
-  weather: weather

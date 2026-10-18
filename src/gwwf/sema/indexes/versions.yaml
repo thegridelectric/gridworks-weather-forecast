@@ -122,13 +122,6 @@ types:
       "000":
         summary: "Initial version."
 
-  weather:
-    latest_version: "000"
-    versioning_strategy: "literal"
-    versions:
-      "000":
-        summary: "Initial Sema version — like-for-like port of the legacy weather_service.py wire shape onto Sema."
-
 enums:
   gw.weather.forecast.fidelity:
     enum_type: "versioned"

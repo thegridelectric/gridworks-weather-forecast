@@ -1,47 +1,109 @@
 # gridworks-weather-forecast
 
-The GridWorks fleet's weather service (gwwf) — a cloud GNode that
-publishes CURRENT weather observations and hourly weather forecasts
-for the fleet's locations, and serves a public read-only HTTP API as
-the single pull path.
+The weather service is the fleet's one source of weather: what the air
+is doing now at the stations near the houses, and what it will do over
+the coming days. It publishes the newest observation from each station
+it follows as the station reports, and on each forecast's own schedule
+it fetches that forecast from the forecaster who serves it and publishes
+it, one message per bundle of forecast channels that a consumer signs up
+to. The Scada actors and LeafTransactiveNode actors read these messages,
+so a missing forecast is a worse plan. Every forecast says, series by
+series, whether it is live, a stored copy or a seasonal fallback, so a
+reader knows how far to trust it.
 
-**Broadcasts are the delivery.** gwwf publishes two message types over
-RabbitMQ on the schedule declared by its channel records:
+What the service knows about the world, the places, the stations, which
+quantities each station reports, which forecaster predicts which
+quantity on what time grid, and which bundles exist, is a set of records
+that enter once, by a person's act, and never change in place; a change
+is a new record. The service starts empty and runs idle until records
+arrive. Today the observations come from the National Weather Service's
+station feeds, and the forecasts from its gridpoint model and from
+Open-Meteo's solar model. Each forecaster is one competitor among
+several, and a new one enters as a record with no code change. A read-only web
+interface serves the records and the latest observation and forecast for
+anyone who missed a message. The service keeps a database of its own
+that nobody else reads.
 
-- `gw.weather.observation` — the newest observation per station, one
-  reading per quantity the station reported, latest-only; missed grid
-  points are replayed as explicitly-marked interpolated messages when
-  the gap is short (≤ 3 h), and left as gaps otherwise.
-- `gw.weather.forecast` — one message per bundle per emission, one
-  series per quantity the bundle binds, each stamped with its source's
-  own data-revision time and a fidelity marker (live / stored /
-  seasonal-template) that keeps degraded emissions honest.
+## What it speaks
 
-**HTTP is the pull path** — drop recovery, fallback, post-hoc reads:
-record listings plus latest observation per station and latest
-forecast per bundle,
-every response a sema word byte-identical to its broadcast. Interactive
-docs at `/docs` once running.
+Every message in or out is a Sema word, the versioned vocabulary of
+JSON-Schema contracts for GridWorks boundaries, canonical at
+[`thegridelectric/sema`](https://github.com/thegridelectric/sema). The
+words this service speaks, at the versions it speaks them, are listed in
+`src/gwwf/sema_seed_request.yaml`.
 
-Cadence, slice structure, units, stations and locations all come from
-records in the service's own Postgres (gwwf is the sole accessor); a
-forecast channel's Method names the adapter that serves it. Two
-sources, each one competing forecaster and not an identity: NWS
-(station observations, gridpoint hourly temperature and wind) and
-Open-Meteo (hourly global horizontal irradiance from the pinned
-`gfs_seamless` model, free tier, CC BY 4.0). Each series in a
-forecast declares its own fidelity.
+Published on the broker:
 
-Message types are governed by **Sema** — the versioned vocabulary of
-JSON-Schema contracts for all GridWorks message boundaries, canonical at
-[`thegridelectric/sema`](https://github.com/thegridelectric/sema) (schema
-ids under `https://schemas.electricity.works`). This repo carries a vendored
-snapshot at `src/gwwf/sema` — generated, never hand-edit; regenerate with
-`scripts/regen_sema_snapshot.sh` from the seed
-`src/gwwf/sema_seed_request.yaml`. See `src/gwwf/sema/README.md` for the
-working rules.
+- `gw.weather.observation`: the newest observation from one station, one
+  reading per quantity the station reported, latest-only. A missed grid
+  point is replayed as an explicitly marked interpolated message when the
+  gap is three hours or less, and left as a gap otherwise.
+- `gw.weather.forecast`: one message per bundle per emission, one series
+  per quantity the bundle binds, each series stamped with its source's
+  own revision time and a fidelity marker (live, stored,
+  seasonal.template).
+- Each record word, once, when the record is created, on a channel named
+  for the record.
+- `glitch`: a fault a person may want to know about (a source that would
+  not answer, a gap that could not be filled).
 
-## Quick start (dev)
+Received on the broker:
+
+- `gw.weather.create.cmd`: one record to insert, sent direct to the
+  service by the minter. The verdict goes back to the sender as
+  `gw.weather.cmd.ack` or `gw.weather.cmd.nack` with its reason.
+
+Served over HTTP, every response a Sema word byte-identical to its
+broadcast: a listing per record kind, the latest observation per
+station, the latest forecast per bundle, and a ping. Interactive docs
+at `/docs` once running.
+
+## Processes
+
+- **The actor** (`gwwf rabbit`): a GridWorks GNode on the broker. It
+  fetches, publishes, and is the only writer of the service's database.
+  It validates its identity file at boot and refuses to start if the
+  file's alias and its configured alias differ.
+- **The read API** (`gwwf api`): a separate process serving the HTTP
+  surface from the same database. It needs no broker.
+- **The minter** (`gwwf create <record.json>`): a command a person runs
+  to insert one record. It connects as its own principal,
+  `<universe>.weatherminter`, publishes the create command and prints
+  the verdict the actor addresses to that sender.
+
+## Records
+
+The schema starts empty and there is no seed. Every record enters by a
+human act over the bus. Records are insert-only identities; a change is
+a new record. The actor validates every command through the vendored
+snapshot, so a malformed or dangling record is refused and nothing is
+inserted.
+
+The six record kinds, in the order they reference one another:
+
+1. `gw.weather.location.gt`: a place and its coordinates
+2. `gw.weather.station.gt`: an observing instrument and its network ids
+3. `gw.weather.channel.gt`: an observed quantity on a station
+4. `gw.weather.forecast.channel.gt`: a named predictor of one channel,
+   with its own time-slice grid; its Method names the adapter that
+   serves it
+5. `gw.weather.forecast.bundle.gt`: the bindings one emission serves;
+   its embedded channel copies must agree with the canonical records
+6. `gw.weather.seasonal.template.gt`: a location's design-cold month
+   table, the last-resort fill
+
+`dev-records/` holds the dev set in that order, and the same files mint
+the production set by hand. `src/gwwf/sema/samples/` holds one valid
+instance of each word.
+
+## Operation
+
+Where the service runs, who may log in, and how it is deployed,
+restarted and re-minted are in `gridworks-infra/forecast/instance-README.md`.
+The two systemd units are in `service/`. Deploys are commit, push, pull
+on the box; nothing is edited there.
+
+## Development
 
 Requires Python 3.12+, [`uv`](https://docs.astral.sh/uv/), Docker, and
 the local dev broker from the sibling `gridworks-base` repo (`./arm.sh`
@@ -55,79 +117,37 @@ scripts/dev-down.sh      # stop both and drop the DB volume
 
 `dev-up.sh` is the whole dev loop: it tears down any previous dev run,
 brings up the compose Postgres empty (host port 5436), migrates it,
-starts the actor and the read API under `scripts/dev.env` with the
-dev identity `scripts/dev-g.node.gt.json`, and mints every record in
+starts the actor and the read API under `scripts/dev.env` with the dev
+identity `scripts/dev-g.node.gt.json`, and mints every record in
 `dev-records/` over the bus in referential order. The actor's log is
-`~/.local/state/gridworks/weather-forecast/log/d1.weather.log`;
-`.dev/` has the pids. The pieces by hand, against a filled `.env`:
+`~/.local/state/gridworks/weather-forecast/log/d1.weather.log`; `.dev/`
+has the pids. The pieces by hand, against a filled `.env` (copy
+`template.env`; settings take the `GWWF_` prefix):
 
 ```sh
 docker compose up -d && uv run alembic upgrade head
-uv run gwwf rabbit            # the emission actor
-uv run gwwf api               # the read API (separate process)
-```
-
-The actor needs a `g.node.gt.json` identity file (`GWWF_G_NODE_PATH`);
-it validates at boot and its `Alias` must equal `GWWF_SERVICE_ALIAS`.
-
-## Records: how a location, station, channel, bundle or template enters
-
-The schema starts empty and there is no seed. Every record enters by a
-human act over the bus (`dev-records/` holds the dev set, which
-`scripts/dev-up.sh` mints the same way): `gwwf create <record.json>` publishes a
-`gw.weather.create.cmd` direct to the running actor and prints the
-typed verdict (ack, or a nack with its reason). Records are insert-only
-identities; a change is a new record.
-
-```sh
+uv run gwwf rabbit            # the actor
+uv run gwwf api               # the read API
 uv run gwwf create my-location.json
 ```
 
-The file holds one record word instance. The six kinds, in the order
-they reference one another:
+Against a dev broker the minter uses the actor's broker client. Against
+a gated broker it needs its own client cert, named by the
+`GWWF_MINTER_RABBIT__*` lines in `template.env`.
 
-1. `gw.weather.location.gt` — a place and its coordinates
-2. `gw.weather.station.gt` — an observing instrument and its network ids
-3. `gw.weather.channel.gt` — an observed quantity on a station
-4. `gw.weather.forecast.channel.gt` — a named predictor of one channel
-5. `gw.weather.forecast.bundle.gt` — the bindings one emission serves
-6. `gw.weather.seasonal.template.gt` — a location's design-cold month table,
-   the last-resort fill
+The vendored Sema snapshot at `src/gwwf/sema` is generated; to change
+it, edit the seed and run `scripts/regen_sema_snapshot.sh`. `src/gwwf/sema/README.md` has the working rules.
 
-`src/gwwf/sema/samples/` holds a valid instance of each as the shape to
-copy. The actor validates every command through the vendored snapshot,
-so a malformed or dangling record is nacked, never half-inserted.
-
-**The minter identity.** The create command is sent as
-`<universe>.weatherminter`, a Service principal of its own, never as the
-actor (the actor addresses its verdict to the sender). Against a dev
-broker the minter connects with the actor's broker client. Against a
-gated broker it needs its own client cert, named by the
-`GWWF_MINTER_RABBIT__*` lines (`template.env`); each `gwwf create` is a
-fresh instance on that principal.
-
-## Tests
+Tests:
 
 ```sh
 ./ci.sh
 ```
 
-Mirrors CI: locked sync, ruff lint + format check, pytest. The DB and
-layer-2 integration tests spin ephemeral Postgres/RabbitMQ via
+Mirrors CI: locked sync, ruff lint and format check, pytest. The DB and
+broker integration tests spin ephemeral Postgres and RabbitMQ via
 testcontainers (Docker required; they self-skip without it). Live NWS
 adapter tests are env-gated: `GWWF_LIVE_NWS=1 uv run pytest
-tests/test_nws_live.py`. Do not point `GWWF_TEST_RABBIT_URL` at the
-dev broker while a dev actor runs on it: both answer to `d1.weather`,
-so the running actor consumes the suite's create commands.
-
-## Deploy
-
-`service/weather-rabbit.service` and `service/weather-api.service`
-run the two halves under systemd from a repo checkout at
-`/home/weather/gridworks-weather-forecast` (adjust user/paths to the
-deploy host). The API binds loopback (`GWWF_API_HOST`/`GWWF_API_PORT`,
-default `127.0.0.1:8531`); TLS belongs to the fronting proxy. Deploys
-are commit → push → pull on the box — never edit on the box. The
-schema has one migration; a box whose DB predates the station words
-drops and recreates the database before `alembic upgrade head`, then
-re-mints its records.
+tests/test_nws_live.py`. Do not point `GWWF_TEST_RABBIT_URL` at the dev
+broker while a dev actor runs on it: both answer to `d1.weather`, so the
+running actor consumes the suite's create commands.

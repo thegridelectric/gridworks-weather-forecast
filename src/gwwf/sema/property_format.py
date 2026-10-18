@@ -110,22 +110,6 @@ def is_utc_milliseconds(v: int) -> int:
     return v
 
 
-def is_utc_seconds(v: int) -> int:
-    if not isinstance(v, int):
-        raise ValueError("Not an int!")
-    start_date = datetime(2000, 1, 1, tzinfo=UTC)
-    end_date = datetime(3000, 1, 1, tzinfo=UTC)
-
-    start_timestamp = int(start_date.timestamp())
-    end_timestamp = int(end_date.timestamp())
-
-    if v < start_timestamp:
-        raise ValueError(f"{v}: Fails UTCSeconds format! Must be after Jan 1 2000")
-    if v > end_timestamp:
-        raise ValueError(f"{v}: Fails UTCSeconds format! Must be before Jan 1 3000")
-    return v
-
-
 def is_uuid4_str(v: str) -> str:
     if not isinstance(v, str):
         raise ValueError(f"<{v}>: uuid4.str must be a string.")
@@ -188,11 +172,6 @@ UtcIso8601Seconds = Annotated[
 UTCMilliseconds = Annotated[
     int,
     BeforeValidator(is_utc_milliseconds),
-]
-
-UTCSeconds = Annotated[
-    int,
-    BeforeValidator(is_utc_seconds),
 ]
 
 UUID4Str = Annotated[
