@@ -67,13 +67,6 @@ formats:
     status: "published"
     description: "UTC timestamp in whole milliseconds since Unix epoch (2000–3000 range)"
 
-  utc.seconds:
-    owner: gridworks-energy
-    schema_url: "https://schemas.electricity.works/formats/utc.seconds"
-    created: "2024-09-02T15:00:00Z"
-    status: "published"
-    description: "UTC timestamp in whole seconds since Unix epoch (2000–3000 range)"
-
   uuid4.str:
     owner: gridworks-energy
     schema_url: "https://schemas.electricity.works/formats/uuid4.str"
@@ -414,20 +407,3 @@ types:
             - "non.empty.string"
             - "utc.iso8601.seconds"
             - "uuid4.str"
-
-  weather:
-    latest_version: "000"
-    owner: gridworks-energy
-    versioning_strategy: "literal"
-    description: "Single-instant real-time outside-air-temperature and wind-speed observation from a third-party weather source, identified by a weather channel name (e.g. weather.gov.kmlt)."
-
-    versions:
-      "000":
-        schema_url: "https://schemas.electricity.works/types/weather/000"
-        created: "2026-05-24T16:59:25Z"
-        status: "published"
-        summary: "Initial Sema version — like-for-like port of the legacy weather_service.py wire shape onto Sema."
-        direct_dependencies:
-          structural:
-            - "left.right.dot"
-            - "utc.seconds"

@@ -177,12 +177,4 @@ types:
       - uuid4.str
       types: []
       versionless_types: []
-  weather:
-    '000':
-      enums: []
-      formats:
-      - left.right.dot
-      - utc.seconds
-      types: []
-      versionless_types: []
 versionless_types: {}

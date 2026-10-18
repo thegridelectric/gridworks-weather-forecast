@@ -74,7 +74,6 @@ formats:
     - gw.weather.location.gt:001
     - gw.weather.observation.reading:000
     - gw.weather.seasonal.template.gt:000
-    - weather:000
   lowercase.token:
     used_by:
     - gw.weather.channel.gt:002
@@ -112,9 +111,6 @@ formats:
     used_by:
     - glitch:000
     - gw.weather.forecast:001
-  utc.seconds:
-    used_by:
-    - weather:000
   uuid4.str:
     used_by:
     - gw.weather.channel.gt:002

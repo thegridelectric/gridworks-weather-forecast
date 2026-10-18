@@ -5,12 +5,10 @@
 # into src/gwwf/sema/ to refresh the vendored snapshot.
 #
 # The gw.weather.* words are the service's vocabulary: the two message
-# words, plus the .gt record words whose canonical seed is the
-# gridworks-weather DB. The closure pulls the fidelity enum and
-# gw1.quantity / gw1.unit. Latest versions only: the service speaks
-# the station words and nothing older. Legacy `weather` (v000) stays
-# while the actor still publishes it; it leaves the seed with the last
-# legacy import.
+# words, the create command and its two verdicts, and the .gt record
+# words whose canonical seed is the gridworks-weather DB. The closure
+# pulls the fidelity enum and gw1.quantity / gw1.unit. Latest versions
+# only: the service speaks the station words and nothing older.
 
 initial_targets:
   types:
@@ -25,7 +23,6 @@ initial_targets:
     gw.weather.cmd.ack: {}
     gw.weather.cmd.nack: {}
     glitch: {}
-    weather: {}
 
 # Local class/module names drop the gw ceremony inside this package:
 # gw.weather.observation -> WeatherObservation, gw1.unit -> Unit. Wire
