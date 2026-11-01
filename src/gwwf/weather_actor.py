@@ -406,6 +406,9 @@ class WeatherActor(GridworksActor):
     # ------------------------------------------------------------------
 
     def _publish_stream(self, message: WeatherMessage, radio_channel: str) -> None:
+        if isinstance(message, WeatherForecast):
+            with self._sessions() as session:
+                message = store_forecast(session, message)
         envelope = self.broadcast_envelope(
             type_name=message.type_name, radio_channel=radio_channel
         )
@@ -413,9 +416,6 @@ class WeatherActor(GridworksActor):
         self.logger.info(
             "published %s", envelope.routing_key, extra={"radio": radio_channel}
         )
-        if isinstance(message, WeatherForecast):
-            with self._sessions() as session:
-                store_forecast(session, message)
 
     def _observation_published(
         self, observation: WeatherObservation, slot_s: int

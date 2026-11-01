@@ -56,6 +56,10 @@ def test_record_listings_and_latest_pulls(db_session: Session, pg_url: str) -> N
     assert pulled.json() == OBSERVATION.to_dict()
 
     pulled = client.get(f"/d1-weather/latest-forecast/{FORECAST.bundle_name}")
+    assert (
+        client.get(f"/d1-weather/forecasts/{FORECAST.forecast_uid}").json()
+        == pulled.json()
+    )
     assert pulled.status_code == 200
     assert pulled.json() == FORECAST.to_dict()
 
@@ -65,3 +69,9 @@ def test_missing_pulls_404(db_session: Session, pg_url: str) -> None:
     client = client_for(pg_url)
     assert client.get("/d1-weather/latest-observation/nosuchstation").status_code == 404
     assert client.get("/d1-weather/latest-forecast/no.such.bundle").status_code == 404
+    assert (
+        client.get(
+            "/d1-weather/forecasts/0b7d4c2e-6a1f-4c3d-8e9f-2a3b4c5d6e7f"
+        ).status_code
+        == 404
+    )

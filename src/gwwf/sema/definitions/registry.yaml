@@ -1,6 +1,6 @@
 metadata:
   registry_version: "1.0"
-  last_updated: "2026-10-18T18:50:00Z"
+  last_updated: "2026-11-01T16:00:00Z"
   maintainer: "gridworks-energy"
 
 formats:
@@ -222,23 +222,24 @@ types:
             - "gw.weather.station.gt:000"
 
   gw.weather.forecast:
-    latest_version: "001"
+    latest_version: "002"
     owner: gridworks-energy
     versioning_strategy: "literal"
     description: "Weather series over a shared slice grid for a location, emitted per bundle by the GridWorks weather forecast service for flexible-load optimization; the bundle declares which series, each with its own fidelity."
 
     versions:
-      "001":
-        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast/001"
-        created: "2026-10-17T16:00:00Z"
+      "002":
+        schema_url: "https://schemas.electricity.works/types/gw.weather.forecast/002"
+        created: "2026-11-01T15:50:00Z"
         status: "published"
-        summary: "- SourceUpdatedTime, Fidelity, TempChannelName, TempValues, WindSpeedChannelName, WindSpeedValues: removed - SeriesList: add (gw.weather.forecast.series 000, one per bound channel)"
+        summary: "- ForecastUid: add (uuid4.str, required), the forecast's identity minted by the service before the send"
         direct_dependencies:
           structural:
             - "gw.weather.forecast.series:000"
             - "left.right.dot"
             - "utc.iso8601.seconds"
             - "utc.milliseconds"
+            - "uuid4.str"
 
   gw.weather.forecast.binding:
     latest_version: "000"

@@ -20,6 +20,6 @@ def test_observation_roundtrips_through_codec() -> None:
 
 def test_forecast_roundtrips_through_codec() -> None:
     codec = SemaCodec()
-    sample = json.loads((SAMPLES / "gw.weather.forecast.001.json").read_text())
+    sample = json.loads((SAMPLES / "gw.weather.forecast.002.json").read_text())
     forecast = codec.from_dict(sample, expect=WeatherForecast)
     assert forecast.to_dict() == sample
