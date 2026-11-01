@@ -30,6 +30,7 @@ from fastapi.openapi.utils import get_openapi
 from gwwf.config import GwwfSettings
 from gwwf.db.session import session_factory_from
 from gwwf.db.store import (
+    forecast_by_uid,
     latest_forecast,
     load_bundles,
     load_forecast_channels,
@@ -39,7 +40,7 @@ from gwwf.db.store import (
     load_stations,
     load_weather_channels,
 )
-from gwwf.sema.property_format import LeftRightDot, LowercaseToken
+from gwwf.sema.property_format import UUID4Str, LeftRightDot, LowercaseToken
 from gwwf.sema.types import (
     WeatherChannelGt,
     WeatherForecast,
@@ -70,6 +71,7 @@ class WeatherReads(Protocol):
     def seasonal_templates(self) -> list[WeatherSeasonalTemplateGt]: ...
     def latest_observation(self, station_alias: str) -> WeatherObservation | None: ...
     def latest_forecast(self, bundle_name: str) -> WeatherForecast | None: ...
+    def forecast(self, forecast_uid: str) -> WeatherForecast | None: ...
 
 
 class StoreReads:
@@ -110,6 +112,10 @@ class StoreReads:
     def latest_forecast(self, bundle_name: str) -> WeatherForecast | None:
         with self._sessions() as session:
             return latest_forecast(session, bundle_name)
+
+    def forecast(self, forecast_uid: str) -> WeatherForecast | None:
+        with self._sessions() as session:
+            return forecast_by_uid(session, forecast_uid)
 
 
 def create_app(
@@ -190,6 +196,15 @@ def create_app(
             raise HTTPException(
                 status_code=404, detail=f"no forecast for {bundle_name}"
             )
+        return message
+
+    @router.get("/forecasts/{forecast_uid}", response_model_exclude_none=True)
+    def forecast(forecast_uid: UUID4Str) -> WeatherForecast:
+        """The sent forecast with this ForecastUid, the values behind a
+        decision that cites it (404 if none stored)."""
+        message = reads.forecast(forecast_uid)
+        if message is None:
+            raise HTTPException(status_code=404, detail=f"no forecast {forecast_uid}")
         return message
 
     app.include_router(router)

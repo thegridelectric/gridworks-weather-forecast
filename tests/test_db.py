@@ -6,6 +6,9 @@ read comes back as codec-validated instances equal to what went in.
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -14,6 +17,7 @@ from sqlalchemy.orm import Session
 from tests import records
 from gwwf.db.models import ForecastSql
 from gwwf.db.store import (
+    forecast_by_uid,
     insert_record,
     latest_forecast,
     load_bundles,
@@ -50,6 +54,7 @@ def forecast_message(
 ) -> WeatherForecast:
     temperature, wind, irradiance = BUNDLE.binding_list
     return WeatherForecast(
+        forecast_uid=str(uuid.uuid4()),
         bundle_name=BUNDLE.name,
         message_created_ms=created_ms,
         first_slice_start=first_slice,
@@ -138,8 +143,15 @@ def test_forecast_store_keeps_send_distinct_messages(db_session: Session) -> Non
     new_revision = forecast_message(
         "2026-10-18T16:33:26Z", "2026-10-18T15:00:00Z", 1792087200000
     )
-    for message in (same_window, resend, slid_window, new_revision):
-        store_forecast(db_session, message)
+    stored = {
+        id(message): store_forecast(db_session, message)
+        for message in (same_window, resend, slid_window, new_revision)
+    }
+    # The re-send goes out as the archived message, under the first send's uid.
+    assert stored[id(resend)] == same_window
+    assert stored[id(new_revision)] == new_revision
+    assert forecast_by_uid(db_session, same_window.forecast_uid) == same_window
+    assert forecast_by_uid(db_session, resend.forecast_uid) is None
     count = db_session.scalar(
         select(func.count())
         .select_from(ForecastSql)
@@ -156,6 +168,35 @@ def test_forecast_store_keeps_send_distinct_messages(db_session: Session) -> Non
             select(ForecastSql).where(ForecastSql.bundle_name == BUNDLE.name)
         )
     } == {WeatherForecastFidelity.Stored}
+
+
+def test_reads_pass_over_rows_archived_at_an_earlier_version(
+    db_session: Session,
+) -> None:
+    records.seed(db_session)
+    current = forecast_message(
+        "2026-10-18T09:09:03Z", "2026-10-18T14:00:00Z", 1792080000000
+    )
+    store_forecast(db_session, current)
+    earlier = current.to_dict()
+    del earlier["ForecastUid"]
+    earlier["Version"] = "001"
+    earlier["MessageCreatedMs"] = current.message_created_ms + 3_600_000
+    earlier_uid = str(uuid.uuid4())
+    db_session.add(
+        ForecastSql(
+            id=earlier_uid,
+            bundle_name=BUNDLE.name,
+            source_revision="held",
+            first_slice_start=datetime(2026, 10, 18, 15, tzinfo=UTC),
+            message_created_ms=earlier["MessageCreatedMs"],
+            fidelity=WeatherForecastFidelity.Live,
+            payload=earlier,
+        )
+    )
+    db_session.commit()
+    assert latest_forecast(db_session, BUNDLE.name) == current
+    assert forecast_by_uid(db_session, earlier_uid) is None
 
 
 def test_product_cache_round_trips(db_session: Session) -> None:

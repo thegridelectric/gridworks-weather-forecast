@@ -27,6 +27,7 @@ streams' initial fields.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Callable, NamedTuple, Protocol
@@ -383,6 +384,7 @@ class EmissionScheduler:
             )
             state.last_fidelity[name] = resolved[name].fidelity
         message = WeatherForecast(
+            forecast_uid=str(uuid.uuid4()),
             bundle_name=bundle.name,
             message_created_ms=slot_s * 1000,
             first_slice_start=s_to_iso(first_s),

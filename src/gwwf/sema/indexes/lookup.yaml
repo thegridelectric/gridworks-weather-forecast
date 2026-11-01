@@ -35,10 +35,10 @@ types:
     versions:
       '002': definitions/types/gw.weather.create.cmd/002.yaml
   gw.weather.forecast:
-    latest_version: '001'
+    latest_version: '002'
     versioning_strategy: literal
     versions:
-      '001': definitions/types/gw.weather.forecast/001.yaml
+      '002': definitions/types/gw.weather.forecast/002.yaml
   gw.weather.forecast.binding:
     latest_version: '000'
     versioning_strategy: literal

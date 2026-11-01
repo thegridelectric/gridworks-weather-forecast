@@ -16,7 +16,6 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-import uuid
 
 from gwwf.db.models import (
     BundleBindingSql,
@@ -356,13 +355,16 @@ def source_revision(message: WeatherForecast) -> str:
     )
 
 
-def store_forecast(session: Session, message: WeatherForecast) -> None:
-    """One row per send-distinct message; re-sends of an identical
-    window under held source revisions no-op."""
+def store_forecast(session: Session, message: WeatherForecast) -> WeatherForecast:
+    """The message as the archive has it, keyed by its ForecastUid. One
+    row per send-distinct message: a re-send of an identical window
+    under held source revisions keeps the first row, and the message
+    returned is that row's, so the re-send goes out under the uid the
+    service already answers for."""
     statement = (
         pg_insert(ForecastSql)
         .values(
-            id=str(uuid.uuid4()),
+            id=message.forecast_uid,
             bundle_name=message.bundle_name,
             source_revision=source_revision(message),
             first_slice_start=_dt(message.first_slice_start),
@@ -374,12 +376,36 @@ def store_forecast(session: Session, message: WeatherForecast) -> None:
     )
     session.execute(statement)
     session.commit()
+    row = session.scalars(
+        select(ForecastSql).where(
+            ForecastSql.bundle_name == message.bundle_name,
+            ForecastSql.source_revision == source_revision(message),
+            ForecastSql.first_slice_start == _dt(message.first_slice_start),
+        )
+    ).one()
+    return default_codec.from_dict(row.payload, expect=WeatherForecast)
+
+
+# The archive serves the word's version this snapshot speaks; rows
+# archived under an earlier version are history the reads pass over.
+SERVED_VERSION = (
+    ForecastSql.payload["Version"].astext == WeatherForecast.version_value()
+)
+
+
+def forecast_by_uid(session: Session, forecast_uid: str) -> WeatherForecast | None:
+    row = session.scalars(
+        select(ForecastSql).where(ForecastSql.id == forecast_uid, SERVED_VERSION)
+    ).first()
+    if row is None:
+        return None
+    return default_codec.from_dict(row.payload, expect=WeatherForecast)
 
 
 def latest_forecast(session: Session, bundle_name: str) -> WeatherForecast | None:
     row = session.scalars(
         select(ForecastSql)
-        .where(ForecastSql.bundle_name == bundle_name)
+        .where(ForecastSql.bundle_name == bundle_name, SERVED_VERSION)
         .order_by(ForecastSql.message_created_ms.desc())
         .limit(1)
     ).first()

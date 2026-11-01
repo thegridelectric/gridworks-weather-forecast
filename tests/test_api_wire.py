@@ -46,6 +46,7 @@ OBSERVATION = WeatherObservation(
     ],
 )
 FORECAST = WeatherForecast(
+    forecast_uid="5f1c2b3a-8d4e-4f60-9a7b-1c2d3e4f5a6b",
     bundle_name=BUNDLE.name,
     message_created_ms=1792080000000,
     first_slice_start="2026-10-18T15:00:00Z",

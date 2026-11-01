@@ -45,13 +45,11 @@ types:
           - Record: oneOf gains gw.weather.station.gt/000
 
   gw.weather.forecast:
-    latest_version: "001"
+    latest_version: "002"
     versioning_strategy: "literal"
     versions:
-      "001":
-        summary: >
-          - SourceUpdatedTime, Fidelity, TempChannelName, TempValues, WindSpeedChannelName, WindSpeedValues: removed
-          - SeriesList: add (gw.weather.forecast.series 000, one per bound channel)
+      "002":
+        summary: "- ForecastUid: add (uuid4.str, required), the forecast's identity minted by the service before the send"
 
   gw.weather.forecast.binding:
     latest_version: "000"
