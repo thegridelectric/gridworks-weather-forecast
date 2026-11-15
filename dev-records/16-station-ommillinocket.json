@@ -1,0 +1,10 @@
+{
+  "Alias": "ommillinocket",
+  "DisplayName": "Open-Meteo model gridpoint at Millinocket",
+  "LatitudeMicrodegrees": 45647800,
+  "LongitudeMicrodegrees": -68685600,
+  "Start": "2024-10-01T00:00:00Z",
+  "Id": "2276984d-2842-434a-8a4e-da147d2853b8",
+  "TypeName": "gw.weather.station.gt",
+  "Version": "000"
+}
