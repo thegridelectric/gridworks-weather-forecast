@@ -1,6 +1,6 @@
 metadata:
   generated_from: indexes/public_registry.yaml
-  generated_at: '2026-11-01T16:28:08Z'
+  generated_at: '2026-11-15T16:20:29Z'
   note: Transitive closure of initial_targets
 initial_targets:
 - gw.weather.observation:001
@@ -11,6 +11,7 @@ initial_targets:
 - gw.weather.location.gt:001
 - gw.weather.seasonal.template.gt:000
 - gw.weather.create.cmd:002
+- gw.weather.archive.cmd:000
 - gw.weather.cmd.ack:000
 - gw.weather.cmd.nack:000
 - glitch:000
@@ -53,6 +54,9 @@ worklist:
     glitch:
       '000':
         path: definitions/types/glitch/000.yaml
+    gw.weather.archive.cmd:
+      '000':
+        path: definitions/types/gw.weather.archive.cmd/000.yaml
     gw.weather.channel.gt:
       '002':
         path: definitions/types/gw.weather.channel.gt/002.yaml

@@ -1,4 +1,4 @@
-"""Open-Meteo adapter — the irradiance product to a typed hourly series.
+"""Open-Meteo adapter — the irradiance product and the history series.
 
 The forecast endpoint serves ``shortwave_radiation`` (global horizontal
 irradiance, W/m²) as the mean of the hour PRECEDING each label, so the
@@ -10,19 +10,29 @@ the GFS 0.13° run read from the model metadata endpoint
 (``last_run_initialisation_time``), the member that serves the
 service's horizon. Free tier, non-commercial use; the data are
 CC BY 4.0 Open-Meteo, and the record's Forecaster is the attribution.
+
+The long pull reads the Historical Forecast API, the same request
+shape on another host: the archive of past forecasts stitched from the
+most recent run for each hour, so each value is the shortest-lead
+forecast. Temperature and wind speed are instantaneous at the label;
+shortwave radiation is the mean of the preceding hour and shifts back
+one period as the live product does.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from collections.abc import Iterable
 from typing import Any, NamedTuple
 
 import requests
 
 from gwwf.grid import next_slot, s_to_iso
+from gwwf.sema.enums import Quantity
 from gwwf.sema.property_format import UtcIso8601Seconds
 
 OPEN_METEO_BASE = "https://api.open-meteo.com"
+HISTORICAL_FORECAST_BASE = "https://historical-forecast-api.open-meteo.com"
 MODEL = "gfs_seamless"
 # The concrete member whose run stamps the series: GFS 0.13° serves the
 # splice past HRRR's short range and across the whole horizon.
@@ -31,6 +41,16 @@ VARIABLE = "shortwave_radiation"
 TIMEOUT_S = 30
 SECONDS_PER_SLICE = 3600
 MAX_FORECAST_DAYS = 16
+# The history request's variable per quantity, and the units asked for
+# so the series comes back in the fleet's natural units (°F, mph, W/m²).
+HISTORY_VARIABLES: dict[Quantity, str] = {
+    Quantity.Temperature: "temperature_2m",
+    Quantity.WindSpeed: "wind_speed_10m",
+    Quantity.Irradiance: "shortwave_radiation",
+}
+HISTORY_UNIT_PARAMS = {"temperature_unit": "fahrenheit", "wind_speed_unit": "mph"}
+# Quantities whose label is the end of the hour it describes.
+HOUR_MEAN_QUANTITIES = frozenset({Quantity.Irradiance})
 
 
 class OpenMeteoProductError(Exception):
@@ -48,10 +68,10 @@ def coordinates_from_locator(locator: str) -> tuple[float, float]:
         raise OpenMeteoProductError(f"locator {locator!r} is not '<lat>,<lon>'") from e
 
 
-def _get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    response = requests.get(
-        f"{OPEN_METEO_BASE}{path}", params=params, timeout=TIMEOUT_S
-    )
+def _get(
+    path: str, params: dict[str, Any] | None = None, *, base: str = OPEN_METEO_BASE
+) -> dict[str, Any]:
+    response = requests.get(f"{base}{path}", params=params, timeout=TIMEOUT_S)
     response.raise_for_status()
     data = response.json()
     if not isinstance(data, dict):
@@ -175,3 +195,88 @@ def fetch_irradiance_product(
         now_s=now_s,
         slices=slices,
     )
+
+
+class HistorySeries(NamedTuple):
+    """One quantity's hourly history in its natural unit.
+
+    ``values`` run from ``first_time_s`` at ``period_s``; a None is an
+    hour the source has no value for. The time of each value is the
+    instant it describes: the label for an instantaneous quantity, the
+    start of the hour for an hour-mean one.
+    NOTE: interior record, no sema word — the archive executor turns it
+    into gw.weather.observation messages, which are what reach the wire.
+    """
+
+    quantity: Quantity
+    first_time_s: int
+    period_s: int
+    values: list[float | None]
+
+
+def parse_history(
+    data: dict[str, Any], quantities: Iterable[Quantity]
+) -> dict[Quantity, HistorySeries]:
+    """The response body as one series per quantity; raises
+    ``OpenMeteoProductError`` on a zone other than UTC, a hole in the
+    labels, or a missing variable."""
+    if data.get("utc_offset_seconds") != 0:
+        raise OpenMeteoProductError(
+            f"expected a UTC series, got utc_offset_seconds={data.get('utc_offset_seconds')!r}"
+        )
+    hourly = data.get("hourly", {})
+    labels = hourly.get("time", [])
+    if not labels:
+        raise OpenMeteoProductError("no hourly labels in the response")
+    label_s = [_label_to_s(label) for label in labels]
+    for i in range(1, len(label_s)):
+        if label_s[i] - label_s[i - 1] != SECONDS_PER_SLICE:
+            raise OpenMeteoProductError(f"labels not hour-contiguous at index {i}")
+    series: dict[Quantity, HistorySeries] = {}
+    for quantity in quantities:
+        variable = HISTORY_VARIABLES[quantity]
+        values = hourly.get(variable)
+        if not isinstance(values, list) or len(values) != len(labels):
+            raise OpenMeteoProductError(
+                f"{variable}: {0 if values is None else len(values)} values "
+                f"against {len(labels)} labels"
+            )
+        shift_s = SECONDS_PER_SLICE if quantity in HOUR_MEAN_QUANTITIES else 0
+        series[quantity] = HistorySeries(
+            quantity=quantity,
+            first_time_s=label_s[0] - shift_s,
+            period_s=SECONDS_PER_SLICE,
+            values=[None if v is None else float(v) for v in values],
+        )
+    return series
+
+
+def fetch_history(
+    *,
+    latitude: float,
+    longitude: float,
+    start_s: int,
+    end_s: int,
+    quantities: Iterable[Quantity],
+) -> dict[Quantity, HistorySeries]:
+    """The archived hourly series at a point over the days that cover
+    ``[start_s, end_s)``, one per quantity, in natural units."""
+    wanted = list(quantities)
+    data = _get(
+        "/v1/forecast",
+        params={
+            "latitude": latitude,
+            "longitude": longitude,
+            "start_date": _utc_date(start_s),
+            "end_date": _utc_date(end_s),
+            "hourly": ",".join(HISTORY_VARIABLES[q] for q in wanted),
+            "timezone": "GMT",
+            **HISTORY_UNIT_PARAMS,
+        },
+        base=HISTORICAL_FORECAST_BASE,
+    )
+    return parse_history(data, wanted)
+
+
+def _utc_date(epoch_s: int) -> str:
+    return datetime.fromtimestamp(epoch_s, tz=UTC).strftime("%Y-%m-%d")

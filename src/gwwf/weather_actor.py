@@ -1,4 +1,4 @@
-"""WeatherActor — gwwf's emission actor and the create command's consumer.
+"""WeatherActor — gwwf's emission actor and the command consumer.
 
 Boots from the gridworks-weather DB: each bundle loads back as a
 validated record reconstructed FROM the canonical channel rows (its
@@ -18,6 +18,13 @@ replies `gw.weather.cmd.ack` / `gw.weather.cmd.nack` direct to the
 sender, correlated by the hash of the command bytes as published. The
 scheduler rebuilds from the DB after each applied create, so minted
 records start emitting without a restart.
+
+History enters by `gw.weather.archive.cmd` over the bus: the actor
+checks the command against its records and the archive Method table,
+runs the long pull, acks, and replays the window as observations on
+the station's radio channel from a worker thread, one message per
+`ARCHIVE_SEND_INTERVAL_S`, so the keeper's loop is never swamped. A
+refusal or a failed pull is a nack; a failure mid-replay is a glitch.
 
 Each forecast channel's Method names its adapter (the `ADAPTERS`
 table): the NWS gridpoint hourly product serves temperature and wind,
@@ -45,6 +52,13 @@ from gwbase.transport_encoding import RoutingEnvelope, TransportClass
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from gwwf.archive import (
+    ARCHIVE_CMD,
+    ARCHIVE_METHODS,
+    HistoryPull,
+    observations_for,
+    plan_archive,
+)
 from gwwf.config import GwwfSettings
 from gwwf.create import CREATE_CMD, command_hash
 from gwwf.db.session import session_factory_from
@@ -56,6 +70,7 @@ from gwwf.db.store import (
     load_last_observation,
     load_product,
     load_stations,
+    load_weather_channels,
     save_last_observation,
     save_product,
     store_forecast,
@@ -71,6 +86,7 @@ from gwwf.open_meteo import (
     coordinates_from_locator,
     fetch_irradiance_product,
 )
+from gwwf.grid import iso_to_s
 from gwwf.record_broadcast import radio_channel_for, record_name
 from gwwf.scheduler import (
     EmissionScheduler,
@@ -84,6 +100,7 @@ from gwwf.sema.codec import default_codec
 from gwwf.sema.enums import LogLevel, Quantity
 from gwwf.sema.types import (
     Glitch,
+    WeatherArchiveCmd,
     WeatherChannelGt,
     WeatherCmdAck,
     WeatherCmdNack,
@@ -98,6 +115,7 @@ from gwwf.units import UNIT_SCALE
 
 GLITCH_NODE = "scheduler"
 TICK_S = 1.0
+ARCHIVE_SEND_INTERVAL_S = 0.05
 
 
 class ProductAdapter(NamedTuple):
@@ -165,6 +183,7 @@ class WeatherActor(GridworksActor):
         fetch_observation: Callable[[WeatherStationGt], WeatherObservation]
         | None = None,
         adapters: Mapping[str, ProductAdapter] | None = None,
+        archive_methods: Mapping[str, HistoryPull] | None = None,
     ) -> None:
         super().__init__(
             settings=settings,
@@ -176,6 +195,10 @@ class WeatherActor(GridworksActor):
         self._sessions = session_factory_from(settings)
         self._fetch_observation_override = fetch_observation
         self._adapters: dict[str, ProductAdapter] = {**ADAPTERS, **(adapters or {})}
+        self._archive_methods: dict[str, HistoryPull] = {
+            **ARCHIVE_METHODS,
+            **(archive_methods or {}),
+        }
         self.scheduler = self._build_scheduler()
         self.main_thread = threading.Thread(target=self.main, daemon=True)
 
@@ -340,6 +363,9 @@ class WeatherActor(GridworksActor):
         if envelope.type_name == CREATE_CMD:
             self._process_create(envelope=envelope, body=body)
             return
+        if envelope.type_name == ARCHIVE_CMD:
+            self._process_archive(envelope=envelope, body=body)
+            return
         self.logger.debug(
             "Ignored unexpected %s from %s", envelope.type_name, envelope.from_alias
         )
@@ -383,6 +409,62 @@ class WeatherActor(GridworksActor):
             # wiring is what failed. Keep the old scheduler running and say so.
             self._raise_glitch(
                 LogLevel.Warning, "scheduler rebuild failed after create", str(e)
+            )
+
+    # ------------------------------------------------------------------
+    # The archive round
+    # ------------------------------------------------------------------
+
+    def _process_archive(self, *, envelope: RoutingEnvelope, body: bytes) -> None:
+        chash = command_hash(body)
+        try:
+            cmd = default_codec.from_dict(json.loads(body), expect=WeatherArchiveCmd)
+            with self._sessions() as session:
+                plan = plan_archive(
+                    cmd,
+                    stations=load_stations(session),
+                    channels=load_weather_channels(session),
+                    methods=self._archive_methods,
+                )
+            series = plan.pull.fetch(
+                cmd.source_locator,
+                iso_to_s(cmd.start),
+                iso_to_s(cmd.end),
+                {c.quantity for c in plan.channels},
+            )
+            observations = observations_for(cmd, plan, series)
+        except Exception as e:  # noqa: BLE001 -- a refusal is an answer; the
+            # nack goes over the bus, so the ear captures the refusal.
+            self._reply(envelope, WeatherCmdNack(command_hash=chash, reason=_reason(e)))
+            return
+        self._reply(envelope, WeatherCmdAck(command_hash=chash))
+        self.logger.info(
+            "archive %s: %d observations %s to %s",
+            cmd.station_alias,
+            len(observations),
+            cmd.start,
+            cmd.end,
+        )
+        threading.Thread(
+            target=self._replay,
+            args=(observations, cmd.station_alias),
+            name=f"archive-{chash[:12]}",
+            daemon=True,
+        ).start()
+
+    def _replay(self, observations: list[WeatherObservation], radio: str) -> None:
+        sent = 0
+        try:
+            for observation in observations:
+                self._publish_stream(observation, radio)
+                sent += 1
+                time.sleep(ARCHIVE_SEND_INTERVAL_S)
+        except Exception as e:  # noqa: BLE001 -- the ack is out; what is
+            # left is to say how far the replay got.
+            self._raise_glitch(
+                LogLevel.Warning,
+                f"{radio}: archive replay failed",
+                f"{sent} of {len(observations)} published: {e!r}",
             )
 
     def _reply(

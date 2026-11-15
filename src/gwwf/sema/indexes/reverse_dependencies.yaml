@@ -66,6 +66,7 @@ formats:
   left.right.dot:
     used_by:
     - glitch:000
+    - gw.weather.archive.cmd:000
     - gw.weather.channel.gt:002
     - gw.weather.forecast.bundle.gt:002
     - gw.weather.forecast.channel.gt:000
@@ -76,6 +77,7 @@ formats:
     - gw.weather.seasonal.template.gt:000
   lowercase.token:
     used_by:
+    - gw.weather.archive.cmd:000
     - gw.weather.channel.gt:002
     - gw.weather.observation:001
     - gw.weather.station.gt:000
@@ -99,6 +101,7 @@ formats:
     - glitch:000
   utc.iso8601.seconds:
     used_by:
+    - gw.weather.archive.cmd:000
     - gw.weather.channel.gt:002
     - gw.weather.forecast.bundle.gt:002
     - gw.weather.forecast.channel.gt:000
@@ -110,6 +113,7 @@ formats:
   utc.milliseconds:
     used_by:
     - glitch:000
+    - gw.weather.archive.cmd:000
     - gw.weather.forecast:002
   uuid4.str:
     used_by:

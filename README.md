@@ -66,10 +66,11 @@ at `/docs` once running.
   file's alias and its configured alias differ.
 - **The read API** (`gwwf api`): a separate process serving the HTTP
   surface from the same database. It needs no broker.
-- **The minter** (`gwwf create <record.json>`): a command a person runs
-  to insert one record. It connects as its own principal,
-  `<universe>.weatherminter`, publishes the create command and prints
-  the verdict the actor addresses to that sender.
+- **The minter** (`gwwf create <record.json>`, `gwwf archive ...`): a
+  command a person runs to insert one record, or to fill a station's
+  channels with history. It connects as its own principal,
+  `<universe>.weatherminter`, publishes the command and prints the
+  verdict the actor addresses to that sender.
 
 ## Records
 
@@ -95,6 +96,26 @@ The six record kinds, in the order they reference one another:
 `dev-records/` holds the dev set in that order, and the same files mint
 the production set by hand. `src/gwwf/sema/samples/` holds one valid
 instance of each word.
+
+## History
+
+A station's past is filled by `gwwf archive`: the station, its
+channels, a Method and its SourceLocator, and a window. The actor pulls
+the whole series through the Method's long pull, lays it on the
+channels' grid and publishes one `gw.weather.observation` per grid
+point, so history reaches every consumer by the same path as a live
+reading. The ack means the pull succeeded and the replay is under way.
+The one Method is `open.meteo.historical.forecast.hourly`, the
+archive of past Open-Meteo forecasts at a model gridpoint (shortest
+lead for each hour; temperature, wind speed and irradiance):
+
+```sh
+uv run gwwf archive --station ommillinocket \
+  --channel ommillinocket.temperature --channel ommillinocket.windspeed \
+  --channel ommillinocket.irradiance \
+  --method open.meteo.historical.forecast.hourly --locator 45.6478,-68.6856 \
+  --start 2024-10-01T00:00:00Z --end 2026-10-25T00:00:00Z
+```
 
 ## Operation
 
