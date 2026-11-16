@@ -1,0 +1,13 @@
+{
+  "Name": "ommillinocket.windspeed",
+  "DisplayName": "Millinocket gridpoint wind speed",
+  "Quantity": "WindSpeed",
+  "Unit": "MilesPerHourX10",
+  "StationAlias": "ommillinocket",
+  "EmitPeriodS": 3600,
+  "EmitOffsetS": 0,
+  "Start": "2024-10-01T00:00:00Z",
+  "Id": "7e9b7bf9-709c-4b21-b0c1-37636b81432d",
+  "TypeName": "gw.weather.channel.gt",
+  "Version": "002"
+}
