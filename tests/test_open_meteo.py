@@ -16,6 +16,7 @@ import pytest
 
 from gwwf.grid import iso_to_s
 from gwwf.open_meteo import (
+    parse_hour_mean,
     OpenMeteoProductError,
     coordinates_from_locator,
     forecast_days_for,
@@ -163,3 +164,19 @@ def test_history_refuses_a_missing_variable() -> None:
     del data["hourly"]["wind_speed_10m"]
     with pytest.raises(OpenMeteoProductError, match="wind_speed_10m"):
         parse_history(data, [Quantity.WindSpeed])
+
+
+def test_hour_mean_is_the_value_labelled_with_the_hours_end() -> None:
+    data = fixture()
+    # 13:00's label is the mean over 12:00 to 13:00.
+    assert parse_hour_mean(data, slot_s=iso_to_s("2026-10-16T13:00:00Z")) == 41
+    assert parse_hour_mean(data, slot_s=iso_to_s("2026-10-16T12:00:00Z")) == 23
+
+
+def test_hour_mean_refuses_a_missing_or_null_hour() -> None:
+    data = fixture()
+    with pytest.raises(OpenMeteoProductError):
+        parse_hour_mean(data, slot_s=iso_to_s("2026-10-21T00:00:00Z"))
+    data["hourly"]["shortwave_radiation"][13] = None
+    with pytest.raises(OpenMeteoProductError):
+        parse_hour_mean(data, slot_s=iso_to_s("2026-10-16T13:00:00Z"))

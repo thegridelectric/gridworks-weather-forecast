@@ -17,8 +17,9 @@ quantity on what time grid, and which bundles exist, is a set of records
 that enter once, by a person's act, and never change in place; a change
 is a new record. The service starts empty and runs idle until records
 arrive. Today the observations come from the National Weather Service's
-station feeds, and the forecasts from its gridpoint model and from
-Open-Meteo's solar model. Each forecaster is one competitor among
+station feeds and, for irradiance, from Open-Meteo's solar model at a
+gridpoint station of its own; the forecasts come from the NWS gridpoint
+model and from the same solar model. Each forecaster is one competitor among
 several, and a new one enters as a record with no code change. A read-only web
 interface serves the records and the latest observation and forecast for
 anyone who missed a message. The service keeps a database of its own

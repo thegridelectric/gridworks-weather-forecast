@@ -197,6 +197,54 @@ def fetch_irradiance_product(
     )
 
 
+def parse_hour_mean(data: dict[str, Any], *, slot_s: int) -> int:
+    """The whole-W/m² ``VARIABLE`` value for the hour that ends at
+    ``slot_s``: the response labels each value with the hour's end, so
+    the label equal to ``slot_s`` is the mean over ``[slot_s - 1 h,
+    slot_s)``. Raises ``OpenMeteoProductError`` on a zone other than
+    UTC, a missing label or a null."""
+    if data.get("utc_offset_seconds") != 0:
+        raise OpenMeteoProductError(
+            f"expected a UTC series, got utc_offset_seconds={data.get('utc_offset_seconds')!r}"
+        )
+    hourly = data.get("hourly", {})
+    labels = hourly.get("time", [])
+    values = hourly.get(VARIABLE, [])
+    if not labels or len(labels) != len(values):
+        raise OpenMeteoProductError(
+            f"{len(labels)} labels against {len(values)} {VARIABLE} values"
+        )
+    for label, value in zip(labels, values, strict=True):
+        if _label_to_s(label) != slot_s:
+            continue
+        if value is None:
+            raise OpenMeteoProductError(f"{VARIABLE} is null at {label}")
+        return round(value)
+    raise OpenMeteoProductError(
+        f"no {VARIABLE} value labelled {s_to_iso(slot_s)} in the series"
+    )
+
+
+def fetch_hour_mean(*, latitude: float, longitude: float, slot_s: int) -> int:
+    """The pinned model's mean irradiance over the hour ending at
+    ``slot_s``, from the most recent run: the shortest-lead value for
+    an hour just past. One past day and one forecast day cover any
+    ``slot_s`` within the last day."""
+    data = _get(
+        "/v1/forecast",
+        params={
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": VARIABLE,
+            "models": MODEL,
+            "past_days": 1,
+            "forecast_days": 1,
+            "timezone": "GMT",
+        },
+    )
+    return parse_hour_mean(data, slot_s=slot_s)
+
+
 class HistorySeries(NamedTuple):
     """One quantity's hourly history in its natural unit.
 
