@@ -48,7 +48,9 @@ from collections.abc import Mapping
 from typing import Any, Callable, NamedTuple
 
 from gwbase.gridworks_actor import GridworksActor
-from gwbase.transport_encoding import RoutingEnvelope, TransportClass
+from gwbase.sema.enums import GwGNodeClass
+from gwbase.sema.types.gridworks_header import GridworksHeader
+from gwbase.transport_encoding import DirectRoutingEnvelope, RoutingEnvelope
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -187,11 +189,10 @@ class WeatherActor(GridworksActor):
     ) -> None:
         super().__init__(
             settings=settings,
-            transport_class=TransportClass.WeatherForecastService,
+            g_node_class=GwGNodeClass.WeatherForecastService,
             my_super_alias=settings.my_super_alias,
             my_time_coordinator_alias=settings.my_time_coordinator_alias,
         )
-        self.settings: GwwfSettings = settings
         self._sessions = session_factory_from(settings)
         self._fetch_observation_override = fetch_observation
         self._adapters: dict[str, ProductAdapter] = {**ADAPTERS, **(adapters or {})}
@@ -359,7 +360,13 @@ class WeatherActor(GridworksActor):
         self._main_loop_running = False
         self.main_thread.join()
 
-    def process_message(self, *, envelope: RoutingEnvelope, body: bytes) -> None:
+    def process_message(
+        self,
+        *,
+        envelope: RoutingEnvelope,
+        body: bytes,
+        header: GridworksHeader | None,
+    ) -> None:
         if envelope.type_name == CREATE_CMD:
             self._process_create(envelope=envelope, body=body)
             return
@@ -471,9 +478,12 @@ class WeatherActor(GridworksActor):
         self, envelope: RoutingEnvelope, verdict: WeatherCmdAck | WeatherCmdNack
     ) -> None:
         """The typed verdict (ack/nack), direct to the command's sender."""
+        # A command arrives direct; the reply goes back to its sender's class.
+        if not isinstance(envelope, DirectRoutingEnvelope):
+            return
         from_class = envelope.from_class
         if from_class is None:
-            return  # unknown sender class token — nowhere to address the reply
+            return  # unknown sender class token: nowhere to address the reply
         self.send(
             envelope=self.direct_envelope(
                 type_name=verdict.type_name,

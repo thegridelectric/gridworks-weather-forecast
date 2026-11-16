@@ -440,9 +440,8 @@ class EmissionScheduler:
             else:
                 fidelity = WeatherForecastFidelity.Stored
         resolved: dict[str, _Series] = {}
-        product: HourlyProduct | None = None
         if fidelity is not WeatherForecastFidelity.SeasonalTemplate:
-            product = state.stored[source.name]
+            product: HourlyProduct = state.stored[source.name]
             source_start_s = iso_to_s(product.first_slice_start)
             try:
                 for binding in source.series:

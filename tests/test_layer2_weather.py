@@ -223,7 +223,7 @@ def g_node_file(tmp_path: Path) -> Path:
             "GNodeId": str(uuid.uuid4()),
             "Alias": SERVICE_ALIAS,
             "BaseClass": "Logical",
-            "GNodeClass": "weather",
+            "GNodeClass": "WeatherForecastService",
             "Status": "Active",
         })
     )

@@ -23,6 +23,7 @@ import time
 
 from gwbase.config import ServiceSettings
 from gwbase.orchestrator import Orchestrator
+from gwbase.sema.types.gridworks_header import GridworksHeader
 from gwbase.transport_encoding import RoutingEnvelope, TransportClass
 
 from gwwf.config import GwwfSettings
@@ -73,7 +74,13 @@ class _MintPublisher(Orchestrator):
         )
         self.verdicts: dict[str, Verdict] = {}
 
-    def process_message(self, *, envelope: RoutingEnvelope, body: bytes) -> None:
+    def process_message(
+        self,
+        *,
+        envelope: RoutingEnvelope,
+        body: bytes,
+        header: GridworksHeader | None,
+    ) -> None:
         if envelope.type_name not in (CMD_ACK, CMD_NACK):
             return
         verdict = default_codec.from_dict(json.loads(body))
