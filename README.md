@@ -106,15 +106,28 @@ the whole series through the Method's long pull, lays it on the
 channels' grid and publishes one `gw.weather.observation` per grid
 point, so history reaches every consumer by the same path as a live
 reading. The ack means the pull succeeded and the replay is under way.
-The one Method is `open.meteo.historical.forecast.hourly`, the
-archive of past Open-Meteo forecasts at a model gridpoint (shortest
-lead for each hour; temperature, wind speed and irradiance):
+Two Methods. `open.meteo.historical.forecast.hourly` is the archive of
+past Open-Meteo forecasts at a model gridpoint (shortest lead for each
+hour; temperature, wind speed and irradiance); its SourceLocator is
+`<lat>,<lon>`:
 
 ```sh
 uv run gwwf archive --station ommillinocket \
   --channel ommillinocket.irradiance \
   --method open.meteo.historical.forecast.hourly --locator 45.6478,-68.6856 \
   --start 2024-10-01T00:00:00Z --end 2026-10-25T00:00:00Z
+```
+
+`iem.asos.hourly` is a station's own routine METAR record from the Iowa
+Environmental Mesonet ASOS archive (temperature and wind speed, one
+observation an hour laid on the top of the hour nearest it); its
+SourceLocator is the IEM station identifier:
+
+```sh
+uv run gwwf archive --station kmlt \
+  --channel kmlt.temperature --channel kmlt.windspeed \
+  --method iem.asos.hourly --locator MLT \
+  --start 2024-10-01T00:00:00Z --end 2026-10-25T22:00:00Z
 ```
 
 ## Operation

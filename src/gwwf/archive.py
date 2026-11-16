@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import NamedTuple
 
 from gwwf.grid import iso_to_s, s_to_iso
+from gwwf.iem_asos import fetch_asos_history
 from gwwf.open_meteo import HistorySeries, coordinates_from_locator, fetch_history
 from gwwf.sema.enums import Quantity
 from gwwf.sema.types import (
@@ -69,6 +70,10 @@ ARCHIVE_METHODS: dict[str, HistoryPull] = {
             Quantity.WindSpeed,
             Quantity.Irradiance,
         }),
+    ),
+    "iem.asos.hourly": HistoryPull(
+        fetch=fetch_asos_history,
+        serves=frozenset({Quantity.Temperature, Quantity.WindSpeed}),
     ),
 }
 
