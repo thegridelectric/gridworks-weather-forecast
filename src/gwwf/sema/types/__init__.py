@@ -1,4 +1,5 @@
 from gwwf.sema.types.glitch import Glitch
+from gwwf.sema.types.weather_archive_cmd import WeatherArchiveCmd
 from gwwf.sema.types.weather_channel_gt import WeatherChannelGt
 from gwwf.sema.types.weather_cmd_ack import WeatherCmdAck
 from gwwf.sema.types.weather_cmd_nack import WeatherCmdNack
@@ -16,6 +17,7 @@ from gwwf.sema.types.weather_station_gt import WeatherStationGt
 
 __all__ = [
     "Glitch",
+    "WeatherArchiveCmd",
     "WeatherChannelGt",
     "WeatherCmdAck",
     "WeatherCmdNack",

@@ -1,9 +1,12 @@
 # dev-records
 
 The record set a dev weather service is minted with: one location,
-two stations, three observed channels, five forecast channels, the
+three stations, four observed channels, five forecast channels, the
 bobcat, raccoon and moose bundles and the seasonal template, numbered in
-the referential order `gwwf create` needs. Moose is the 96-hour
+the referential order `gwwf create` needs. The `ommillinocket` station
+is the Open-Meteo model gridpoint at Millinocket: its one channel,
+irradiance, is filled by `gwwf archive` and has no live observation
+stream. Moose is the 96-hour
 temperature-and-wind bundle a scada names: its two NWS channels forecast
 the same `kmlt` observations as raccoon's over a longer grid. `scripts/dev-up.sh` mints them
 over the local dev broker onto an empty database.

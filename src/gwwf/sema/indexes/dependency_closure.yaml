@@ -12,6 +12,16 @@ types:
       - utc.milliseconds
       types: []
       versionless_types: []
+  gw.weather.archive.cmd:
+    '000':
+      enums: []
+      formats:
+      - left.right.dot
+      - lowercase.token
+      - utc.iso8601.seconds
+      - utc.milliseconds
+      types: []
+      versionless_types: []
   gw.weather.channel.gt:
     '002':
       enums:

@@ -5,6 +5,7 @@ enums:
   log.level: log.level
 types:
   glitch: glitch
+  gw.weather.archive.cmd: weather.archive.cmd
   gw.weather.channel.gt: weather.channel.gt
   gw.weather.cmd.ack: weather.cmd.ack
   gw.weather.cmd.nack: weather.cmd.nack

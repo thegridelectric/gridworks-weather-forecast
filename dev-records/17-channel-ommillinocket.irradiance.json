@@ -1,0 +1,13 @@
+{
+  "Name": "ommillinocket.irradiance",
+  "DisplayName": "Millinocket gridpoint global horizontal irradiance",
+  "Quantity": "Irradiance",
+  "Unit": "WattsPerSquareMeter",
+  "StationAlias": "ommillinocket",
+  "EmitPeriodS": 3600,
+  "EmitOffsetS": 0,
+  "Start": "2024-10-01T00:00:00Z",
+  "Id": "32150111-ea44-47cb-b1d2-268cc92e7e1a",
+  "TypeName": "gw.weather.channel.gt",
+  "Version": "002"
+}

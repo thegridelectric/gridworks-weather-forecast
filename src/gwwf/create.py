@@ -1,7 +1,8 @@
-"""The create-command round — records enter by a human act over the bus.
+"""The command round — records and history enter by a human act over the bus.
 
-`gwwf create <record.json>` publishes `gw.weather.create.cmd` direct to
-the weather actor and waits for the typed verdict (`gw.weather.cmd.ack`
+`gwwf create <record.json>` publishes `gw.weather.create.cmd`, and
+`gwwf archive` publishes `gw.weather.archive.cmd`, direct to the
+weather actor, then waits for the typed verdict (`gw.weather.cmd.ack`
 / `gw.weather.cmd.nack`), discriminated by TypeName and correlated by
 the SHA-256 hash of the command bytes as published — the same bytes the
 actor hashes on its side. The sender is its own weather-class operator
@@ -22,26 +23,33 @@ import time
 
 from gwbase.config import ServiceSettings
 from gwbase.orchestrator import Orchestrator
+from gwbase.sema.types.gridworks_header import GridworksHeader
 from gwbase.transport_encoding import RoutingEnvelope, TransportClass
 
 from gwwf.config import GwwfSettings
 from gwwf.record_broadcast import RecordWord
 from gwwf.sema.codec import default_codec
-from gwwf.sema.types import WeatherCmdAck, WeatherCmdNack, WeatherCreateCmd
+from gwwf.sema.types import (
+    WeatherArchiveCmd,
+    WeatherCmdAck,
+    WeatherCmdNack,
+    WeatherCreateCmd,
+)
 
 CREATE_CMD = WeatherCreateCmd.type_name_value()
 CMD_ACK = WeatherCmdAck.type_name_value()
 CMD_NACK = WeatherCmdNack.type_name_value()
 
 Verdict = WeatherCmdAck | WeatherCmdNack
+Command = WeatherCreateCmd | WeatherArchiveCmd
 
 _CONNECT_TIMEOUT_S = 20.0
 VERDICT_TIMEOUT_S = 10.0
 
 
 def command_hash(payload: bytes) -> str:
-    """Content address of a create command — SHA-256 hex of its bytes
-    as published."""
+    """Content address of a command — SHA-256 hex of its bytes as
+    published."""
     return hashlib.sha256(payload).hexdigest()
 
 
@@ -66,7 +74,13 @@ class _MintPublisher(Orchestrator):
         )
         self.verdicts: dict[str, Verdict] = {}
 
-    def process_message(self, *, envelope: RoutingEnvelope, body: bytes) -> None:
+    def process_message(
+        self,
+        *,
+        envelope: RoutingEnvelope,
+        body: bytes,
+        header: GridworksHeader | None,
+    ) -> None:
         if envelope.type_name not in (CMD_ACK, CMD_NACK):
             return
         verdict = default_codec.from_dict(json.loads(body))
@@ -94,12 +108,21 @@ def send_create(
 ) -> tuple[str, Verdict | None]:
     """Publish the create command for `record`; return the command hash
     and the verdict (None when nothing answered within the timeout)."""
+    return send_command(
+        settings, WeatherCreateCmd(record=record, proof=proof), timeout_s=timeout_s
+    )
+
+
+def send_command(
+    settings: GwwfSettings, cmd: Command, *, timeout_s: float
+) -> tuple[str, Verdict | None]:
+    """Publish `cmd` direct to the actor; return the command hash and
+    the verdict (None when nothing answered within the timeout)."""
     publisher = _MintPublisher(
         settings=minter_settings(settings),
         my_super_alias=settings.my_super_alias,
         my_time_coordinator_alias=settings.my_time_coordinator_alias,
     )
-    cmd = WeatherCreateCmd(record=record, proof=proof)
     payload = cmd.to_bytes()
     chash = command_hash(payload)
     publisher.start()

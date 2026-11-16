@@ -5,7 +5,7 @@
 # into src/gwwf/sema/ to refresh the vendored snapshot.
 #
 # The gw.weather.* words are the service's vocabulary: the two message
-# words, the create command and its two verdicts, and the .gt record
+# words, the create and archive commands and their two verdicts, and the .gt record
 # words whose canonical seed is the gridworks-weather DB. The closure
 # pulls the fidelity enum and gw1.quantity / gw1.unit. Latest versions
 # only: the service speaks the station words and nothing older.
@@ -20,6 +20,7 @@ initial_targets:
     gw.weather.location.gt: {}
     gw.weather.seasonal.template.gt: {}
     gw.weather.create.cmd: {}
+    gw.weather.archive.cmd: {}
     gw.weather.cmd.ack: {}
     gw.weather.cmd.nack: {}
     glitch: {}

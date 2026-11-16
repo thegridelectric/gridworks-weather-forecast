@@ -1,0 +1,15 @@
+{
+  "TypeName": "gw.weather.archive.cmd",
+  "Version": "000",
+  "StationAlias": "ommillinocket",
+  "ChannelNameList": [
+    "ommillinocket.temperature",
+    "ommillinocket.windspeed",
+    "ommillinocket.irradiance"
+  ],
+  "Method": "open.meteo.historical.forecast.hourly",
+  "SourceLocator": "45.6478,-68.6856",
+  "Start": "2024-10-01T00:00:00Z",
+  "End": "2026-10-25T00:00:00Z",
+  "CreatedMs": 1794754200000
+}

@@ -1,7 +1,9 @@
-"""Open-Meteo adapter against a captured response (gfs_seamless,
-Millinocket, fetched 2026-10-16): the hour-end label shifts to the
-slice start, holes and nulls refuse, and the coverage check is
-against the next hour boundary after now.
+"""Open-Meteo adapter against captured responses. The live product
+(gfs_seamless, Millinocket, fetched 2026-10-16): the hour-end label
+shifts to the slice start, holes and nulls refuse, and the coverage
+check is against the next hour boundary after now. The history
+series: each quantity timed as the instant it describes, a null a
+missing hour, a hole refused.
 """
 
 from __future__ import annotations
@@ -17,8 +19,11 @@ from gwwf.open_meteo import (
     OpenMeteoProductError,
     coordinates_from_locator,
     forecast_days_for,
+    HISTORY_VARIABLES,
+    parse_history,
     parse_hourly_product,
 )
+from gwwf.sema.enums import Quantity
 
 FIXTURE = Path(__file__).parent / "fixtures" / "open_meteo_gfs_seamless_hourly.json"
 RUN_TIME = "2026-10-16T06:00:00Z"
@@ -111,3 +116,50 @@ def test_forecast_days_cover_the_horizon_at_any_hour() -> None:
     assert forecast_days_for(72) == 5
     assert forecast_days_for(3) == 3
     assert forecast_days_for(24 * 30) == 16
+
+
+# The history fixture: one day (2024-10-01) at Millinocket from the
+# Historical Forecast API, fetched 2026-11-15, 24 labels, °F / mph / W/m².
+HISTORY_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "open_meteo_historical_forecast_hourly.json"
+)
+
+
+def history_fixture() -> dict:
+    return json.loads(HISTORY_FIXTURE.read_text())
+
+
+def test_history_series_time_their_values() -> None:
+    series = parse_history(history_fixture(), HISTORY_VARIABLES)
+    temperature = series[Quantity.Temperature]
+    irradiance = series[Quantity.Irradiance]
+    # Temperature is instantaneous at the label; irradiance is the
+    # mean of the hour before it, so its series starts one hour earlier.
+    assert temperature.first_time_s == iso_to_s("2024-10-01T00:00:00Z")
+    assert irradiance.first_time_s == iso_to_s("2024-09-30T23:00:00Z")
+    assert len(temperature.values) == 24
+    assert temperature.values[:3] == [57.9, 56.4, 54.4]
+    assert series[Quantity.WindSpeed].values[:3] == [4.9, 4.3, 4.9]
+
+
+def test_history_null_is_a_missing_hour() -> None:
+    data = history_fixture()
+    data["hourly"]["temperature_2m"][5] = None
+    series = parse_history(data, [Quantity.Temperature])
+    assert series[Quantity.Temperature].values[5] is None
+
+
+def test_history_refuses_a_hole_in_the_labels() -> None:
+    data = history_fixture()
+    del data["hourly"]["time"][3]
+    for variable in ("temperature_2m", "wind_speed_10m", "shortwave_radiation"):
+        del data["hourly"][variable][3]
+    with pytest.raises(OpenMeteoProductError, match="not hour-contiguous"):
+        parse_history(data, [Quantity.Temperature])
+
+
+def test_history_refuses_a_missing_variable() -> None:
+    data = history_fixture()
+    del data["hourly"]["wind_speed_10m"]
+    with pytest.raises(OpenMeteoProductError, match="wind_speed_10m"):
+        parse_history(data, [Quantity.WindSpeed])
