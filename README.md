@@ -111,7 +111,6 @@ lead for each hour; temperature, wind speed and irradiance):
 
 ```sh
 uv run gwwf archive --station ommillinocket \
-  --channel ommillinocket.temperature --channel ommillinocket.windspeed \
   --channel ommillinocket.irradiance \
   --method open.meteo.historical.forecast.hourly --locator 45.6478,-68.6856 \
   --start 2024-10-01T00:00:00Z --end 2026-10-25T00:00:00Z
