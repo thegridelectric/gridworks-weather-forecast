@@ -149,18 +149,7 @@ def observations_for(
     for point_s in grid_points(
         iso_to_s(cmd.start), iso_to_s(cmd.end), plan.period_s, plan.offset_s
     ):
-        readings: list[WeatherObservationReading] = []
-        for channel in plan.channels:
-            value = value_at(series[channel.quantity], point_s)
-            if value is None:
-                continue
-            readings.append(
-                WeatherObservationReading(
-                    channel_name=channel.name,
-                    quantity=channel.quantity,
-                    value=round(value * UNIT_SCALE[channel.unit]),
-                )
-            )
+        readings = readings_for(plan.channels, series, point_s)
         if readings:
             observations.append(
                 WeatherObservation(
@@ -171,6 +160,28 @@ def observations_for(
                 )
             )
     return observations
+
+
+def readings_for(
+    channels: Iterable[WeatherChannelGt],
+    series: Mapping[Quantity, HistorySeries],
+    point_s: int,
+) -> list[WeatherObservationReading]:
+    """One reading per channel whose series has a value at ``point_s``,
+    scaled onto the channel's Unit."""
+    readings: list[WeatherObservationReading] = []
+    for channel in channels:
+        value = value_at(series[channel.quantity], point_s)
+        if value is None:
+            continue
+        readings.append(
+            WeatherObservationReading(
+                channel_name=channel.name,
+                quantity=channel.quantity,
+                value=round(value * UNIT_SCALE[channel.unit]),
+            )
+        )
+    return readings
 
 
 def value_at(series: HistorySeries, t_s: int) -> float | None:

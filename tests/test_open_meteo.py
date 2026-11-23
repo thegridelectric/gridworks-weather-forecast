@@ -3,7 +3,9 @@
 shifts to the slice start, holes and nulls refuse, and the coverage
 check is against the next hour boundary after now. The history
 series: each quantity timed as the instant it describes, a null a
-missing hour, a hole refused.
+missing hour, a hole refused. The nearest-in response (gfs_seamless,
+all three variables in natural units, fetched 2026-11-23) parses as
+history does and reads at a slot.
 """
 
 from __future__ import annotations
@@ -15,12 +17,12 @@ from pathlib import Path
 import pytest
 
 from gwwf.grid import iso_to_s
+from gwwf.archive import value_at
 from gwwf.open_meteo import (
-    parse_hour_mean,
     OpenMeteoProductError,
+    VARIABLES,
     coordinates_from_locator,
     forecast_days_for,
-    HISTORY_VARIABLES,
     parse_history,
     parse_hourly_product,
 )
@@ -131,7 +133,7 @@ def history_fixture() -> dict:
 
 
 def test_history_series_time_their_values() -> None:
-    series = parse_history(history_fixture(), HISTORY_VARIABLES)
+    series = parse_history(history_fixture(), VARIABLES)
     temperature = series[Quantity.Temperature]
     irradiance = series[Quantity.Irradiance]
     # Temperature is instantaneous at the label; irradiance is the
@@ -166,17 +168,17 @@ def test_history_refuses_a_missing_variable() -> None:
         parse_history(data, [Quantity.WindSpeed])
 
 
-def test_hour_mean_is_the_value_labelled_with_the_hours_end() -> None:
-    data = fixture()
-    # 13:00's label is the mean over 12:00 to 13:00.
-    assert parse_hour_mean(data, slot_s=iso_to_s("2026-10-16T13:00:00Z")) == 41
-    assert parse_hour_mean(data, slot_s=iso_to_s("2026-10-16T12:00:00Z")) == 23
+NEAREST_FIXTURE = (
+    Path(__file__).parent / "fixtures" / "open_meteo_gfs_seamless_nearest.json"
+)
 
 
-def test_hour_mean_refuses_a_missing_or_null_hour() -> None:
-    data = fixture()
-    with pytest.raises(OpenMeteoProductError):
-        parse_hour_mean(data, slot_s=iso_to_s("2026-10-21T00:00:00Z"))
-    data["hourly"]["shortwave_radiation"][13] = None
-    with pytest.raises(OpenMeteoProductError):
-        parse_hour_mean(data, slot_s=iso_to_s("2026-10-16T13:00:00Z"))
+def test_nearest_in_reads_the_hour_that_starts_at_the_slot() -> None:
+    series = parse_history(json.loads(NEAREST_FIXTURE.read_text()), VARIABLES)
+    slot_s = iso_to_s("2026-11-23T20:00:00Z")
+    # Temperature and wind are the values labelled with the slot; the
+    # irradiance is the mean over the hour from the slot, labelled 21:00.
+    assert value_at(series[Quantity.Temperature], slot_s) == 55.6
+    assert value_at(series[Quantity.WindSpeed], slot_s) == 10.8
+    assert value_at(series[Quantity.Irradiance], slot_s) == 24.0
+    assert value_at(series[Quantity.Irradiance], slot_s - 3600) == 84.0
