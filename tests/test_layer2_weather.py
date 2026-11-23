@@ -92,11 +92,16 @@ FAST_LOCATION = WeatherLocationGt(
     timezone="America/New_York",
     id=str(uuid.uuid4()),
 )
+# A Weather Underground id and no IcaoId: a station that observes but
+# has no NWS feed, so it gets no observation stream unless a harness
+# injects one (a station with no network identifier at all would be a
+# model gridpoint and fetch Open-Meteo live).
 FAST_STATION = WeatherStationGt(
     alias=STATION,
     display_name="layer2 station",
     latitude_microdegrees=0,
     longitude_microdegrees=0,
+    wunderground_id="KLAYER2",
     start="2026-08-11T00:00:00Z",
     id=str(uuid.uuid4()),
 )

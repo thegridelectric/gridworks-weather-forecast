@@ -1,4 +1,5 @@
-"""Open-Meteo adapter — the irradiance product and the history series.
+"""Open-Meteo adapter — the irradiance product, the nearest-in hour
+and the history series.
 
 The forecast endpoint serves ``shortwave_radiation`` (global horizontal
 irradiance, W/m²) as the mean of the hour PRECEDING each label, so the
@@ -11,12 +12,16 @@ the GFS 0.13° run read from the model metadata endpoint
 service's horizon. Free tier, non-commercial use; the data are
 CC BY 4.0 Open-Meteo, and the record's Forecaster is the attribution.
 
+Temperature and wind speed are instantaneous at the label; shortwave
+radiation is the mean of the preceding hour and shifts back one period,
+so every value is timed as the instant or slice it describes. The
+nearest-in fetch reads the forecast endpoint for all three at once and
+serves a model gridpoint's observation: the pinned model's value for
+the hour that starts at the slot, the shortest lead the model offers.
 The long pull reads the Historical Forecast API, the same request
 shape on another host: the archive of past forecasts stitched from the
-most recent run for each hour, so each value is the shortest-lead
-forecast. Temperature and wind speed are instantaneous at the label;
-shortwave radiation is the mean of the preceding hour and shifts back
-one period as the live product does.
+most recent run for each hour, so each archived value is that same
+shortest-lead forecast.
 """
 
 from __future__ import annotations
@@ -37,18 +42,21 @@ MODEL = "gfs_seamless"
 # The concrete member whose run stamps the series: GFS 0.13° serves the
 # splice past HRRR's short range and across the whole horizon.
 RUN_STAMP_MODEL = "ncep_gfs013"
-VARIABLE = "shortwave_radiation"
 TIMEOUT_S = 30
 SECONDS_PER_SLICE = 3600
 MAX_FORECAST_DAYS = 16
-# The history request's variable per quantity, and the units asked for
-# so the series comes back in the fleet's natural units (°F, mph, W/m²).
-HISTORY_VARIABLES: dict[Quantity, str] = {
+# Days the nearest-in request asks for: the slot's hour and, for an
+# hour-mean quantity, the label one hour on, which at 23:00 UTC is the
+# next day.
+NEAREST_IN_FORECAST_DAYS = 2
+# The hourly variable per quantity, and the units asked for so a series
+# comes back in the fleet's natural units (°F, mph, W/m²).
+VARIABLES: dict[Quantity, str] = {
     Quantity.Temperature: "temperature_2m",
     Quantity.WindSpeed: "wind_speed_10m",
     Quantity.Irradiance: "shortwave_radiation",
 }
-HISTORY_UNIT_PARAMS = {"temperature_unit": "fahrenheit", "wind_speed_unit": "mph"}
+UNIT_PARAMS = {"temperature_unit": "fahrenheit", "wind_speed_unit": "mph"}
 # Quantities whose label is the end of the hour it describes.
 HOUR_MEAN_QUANTITIES = frozenset({Quantity.Irradiance})
 
@@ -128,12 +136,13 @@ def parse_hourly_product(
         raise OpenMeteoProductError(
             f"expected a UTC series, got utc_offset_seconds={data.get('utc_offset_seconds')!r}"
         )
+    variable = VARIABLES[Quantity.Irradiance]
     hourly = data.get("hourly", {})
     labels = hourly.get("time", [])
-    values = hourly.get(VARIABLE, [])
+    values = hourly.get(variable, [])
     if not labels or len(labels) != len(values):
         raise OpenMeteoProductError(
-            f"{len(labels)} labels against {len(values)} {VARIABLE} values"
+            f"{len(labels)} labels against {len(values)} {variable} values"
         )
     label_s = [_label_to_s(label) for label in labels]
     for i in range(1, len(label_s)):
@@ -142,7 +151,7 @@ def parse_hourly_product(
     series: list[int] = []
     for label, value in zip(labels, values, strict=True):
         if value is None:
-            raise OpenMeteoProductError(f"{VARIABLE} is null at {label}")
+            raise OpenMeteoProductError(f"{variable} is null at {label}")
         series.append(round(value))
     first_slice_start_s = label_s[0] - SECONDS_PER_SLICE
     needed_end_s = next_slot(now_s, SECONDS_PER_SLICE, 0) + slices * SECONDS_PER_SLICE
@@ -182,7 +191,7 @@ def fetch_irradiance_product(
         params={
             "latitude": latitude,
             "longitude": longitude,
-            "hourly": VARIABLE,
+            "hourly": VARIABLES[Quantity.Irradiance],
             "models": MODEL,
             "forecast_days": forecast_days_for(slices),
             "timezone": "GMT",
@@ -195,54 +204,6 @@ def fetch_irradiance_product(
         now_s=now_s,
         slices=slices,
     )
-
-
-def parse_hour_mean(data: dict[str, Any], *, slot_s: int) -> int:
-    """The whole-W/m² ``VARIABLE`` value for the hour that ends at
-    ``slot_s``: the response labels each value with the hour's end, so
-    the label equal to ``slot_s`` is the mean over ``[slot_s - 1 h,
-    slot_s)``. Raises ``OpenMeteoProductError`` on a zone other than
-    UTC, a missing label or a null."""
-    if data.get("utc_offset_seconds") != 0:
-        raise OpenMeteoProductError(
-            f"expected a UTC series, got utc_offset_seconds={data.get('utc_offset_seconds')!r}"
-        )
-    hourly = data.get("hourly", {})
-    labels = hourly.get("time", [])
-    values = hourly.get(VARIABLE, [])
-    if not labels or len(labels) != len(values):
-        raise OpenMeteoProductError(
-            f"{len(labels)} labels against {len(values)} {VARIABLE} values"
-        )
-    for label, value in zip(labels, values, strict=True):
-        if _label_to_s(label) != slot_s:
-            continue
-        if value is None:
-            raise OpenMeteoProductError(f"{VARIABLE} is null at {label}")
-        return round(value)
-    raise OpenMeteoProductError(
-        f"no {VARIABLE} value labelled {s_to_iso(slot_s)} in the series"
-    )
-
-
-def fetch_hour_mean(*, latitude: float, longitude: float, slot_s: int) -> int:
-    """The pinned model's mean irradiance over the hour ending at
-    ``slot_s``, from the most recent run: the shortest-lead value for
-    an hour just past. One past day and one forecast day cover any
-    ``slot_s`` within the last day."""
-    data = _get(
-        "/v1/forecast",
-        params={
-            "latitude": latitude,
-            "longitude": longitude,
-            "hourly": VARIABLE,
-            "models": MODEL,
-            "past_days": 1,
-            "forecast_days": 1,
-            "timezone": "GMT",
-        },
-    )
-    return parse_hour_mean(data, slot_s=slot_s)
 
 
 class HistorySeries(NamedTuple):
@@ -282,7 +243,7 @@ def parse_history(
             raise OpenMeteoProductError(f"labels not hour-contiguous at index {i}")
     series: dict[Quantity, HistorySeries] = {}
     for quantity in quantities:
-        variable = HISTORY_VARIABLES[quantity]
+        variable = VARIABLES[quantity]
         values = hourly.get(variable)
         if not isinstance(values, list) or len(values) != len(labels):
             raise OpenMeteoProductError(
@@ -317,11 +278,33 @@ def fetch_history(
             "longitude": longitude,
             "start_date": _utc_date(start_s),
             "end_date": _utc_date(end_s),
-            "hourly": ",".join(HISTORY_VARIABLES[q] for q in wanted),
+            "hourly": ",".join(VARIABLES[q] for q in wanted),
             "timezone": "GMT",
-            **HISTORY_UNIT_PARAMS,
+            **UNIT_PARAMS,
         },
         base=HISTORICAL_FORECAST_BASE,
+    )
+    return parse_history(data, wanted)
+
+
+def fetch_nearest_in(
+    *, latitude: float, longitude: float, quantities: Iterable[Quantity]
+) -> dict[Quantity, HistorySeries]:
+    """The pinned model's series at a point from its most recent run,
+    today and tomorrow UTC, one per quantity, in natural units: the
+    shortest-lead value for any hour of the current day."""
+    wanted = list(quantities)
+    data = _get(
+        "/v1/forecast",
+        params={
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": ",".join(VARIABLES[q] for q in wanted),
+            "models": MODEL,
+            "forecast_days": NEAREST_IN_FORECAST_DAYS,
+            "timezone": "GMT",
+            **UNIT_PARAMS,
+        },
     )
     return parse_history(data, wanted)
 

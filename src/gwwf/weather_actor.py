@@ -32,11 +32,11 @@ the Open-Meteo product irradiance; bindings sharing an acquisition
 (method + SourceLocator) share one fetch. Observations come from the
 NWS station feed, keyed by the station record's IcaoId. A station with
 no network identifier at all is a model gridpoint: its observed series
-is the hour-mean irradiance of the pinned Open-Meteo model at its
-coordinates, the shortest-lead value for the hour just ended. A station
-with another network identifier but no IcaoId has no observation
-stream. Fetchers and
-adapters are injectable for harnesses. One forecast stream per
+are the pinned Open-Meteo model's nearest-in values at its coordinates,
+the hour that starts at the slot from the most recent run, one reading
+per channel, laid out as the archive lays history. A station with
+another network identifier but no IcaoId has no observation stream.
+Fetchers and adapters are injectable for harnesses. One forecast stream per
 bundle, one observation stream per station the bundles' observed
 channels name. Broadcast radio channels: observations go out on the
 station alias, forecasts on the bundle Name, records on their own
@@ -64,6 +64,7 @@ from gwwf.archive import (
     HistoryPull,
     observations_for,
     plan_archive,
+    readings_for,
 )
 from gwwf.config import GwwfSettings
 from gwwf.create import CREATE_CMD, command_hash
@@ -89,10 +90,11 @@ from gwwf.nws import (
 )
 from gwwf.open_meteo import (
     IrradianceHourlyProduct,
+    HistorySeries,
     coordinates_from_locator,
     SECONDS_PER_SLICE,
-    fetch_hour_mean,
     fetch_irradiance_product,
+    fetch_nearest_in,
 )
 from gwwf.grid import iso_to_s, s_to_iso
 from gwwf.record_broadcast import radio_channel_for, record_name
@@ -117,7 +119,6 @@ from gwwf.sema.types import (
     WeatherForecastBundleGt,
     WeatherForecastChannelGt,
     WeatherObservation,
-    WeatherObservationReading,
     WeatherStationGt,
 )
 from gwwf.units import UNIT_SCALE
@@ -193,6 +194,26 @@ def is_model_gridpoint(station: WeatherStationGt) -> bool:
     )
 
 
+def gridpoint_observation(
+    station: WeatherStationGt,
+    channels: list[WeatherChannelGt],
+    series: Mapping[Quantity, HistorySeries],
+    slot_s: int,
+) -> WeatherObservation:
+    """A model gridpoint's observation at ``slot_s``: one reading per
+    channel from the model's value for the hour that starts at the slot
+    (an instantaneous quantity at the slot, an hour-mean quantity over
+    the hour from it), timed at the slot, Interpolated false. It is the
+    message the archive replay emits for the same grid point, so the
+    live stream continues a backfill with no seam."""
+    return WeatherObservation(
+        station_alias=station.alias,
+        observation_time=s_to_iso(slot_s),
+        interpolated=False,
+        reading_list=readings_for(channels, series, slot_s),
+    )
+
+
 class WeatherActor(GridworksActor):
     """Emits the weather streams on the DB records' schedule."""
 
@@ -246,17 +267,6 @@ class WeatherActor(GridworksActor):
                             "%s: no IcaoId, so no observation stream; its channels "
                             "are forecast only",
                             station_alias,
-                        )
-                        continue
-                    others = [
-                        c for c in channels if c.quantity is not Quantity.Irradiance
-                    ]
-                    if others:
-                        self.logger.warning(
-                            "%s: a model gridpoint observes irradiance only, so no "
-                            "observation stream; it has %s",
-                            station_alias,
-                            ", ".join(f"{c.name} ({c.quantity.value})" for c in others),
                         )
                         continue
                 observation_streams.append(
@@ -363,31 +373,18 @@ class WeatherActor(GridworksActor):
     def _gridpoint_observation_fetch(
         self, station: WeatherStationGt, channels: list[WeatherChannelGt]
     ) -> Callable[[], WeatherObservation]:
-        """The gridpoint's observation for the hour just ended: the pinned
-        model's hour-mean irradiance at the station's coordinates, timed
-        at the hour's start as an hour-mean quantity is. ``channels`` are
-        irradiance channels; ``_build_scheduler`` admits no other."""
+        """The gridpoint's nearest-in observation: the pinned model's
+        series at the station's coordinates, read at the slot."""
         latitude = station.latitude_microdegrees / 1_000_000
         longitude = station.longitude_microdegrees / 1_000_000
+        quantities = {channel.quantity for channel in channels}
 
         def fetch() -> WeatherObservation:
             slot_s = (int(time.time()) // SECONDS_PER_SLICE) * SECONDS_PER_SLICE
-            mean_w_m2 = fetch_hour_mean(
-                latitude=latitude, longitude=longitude, slot_s=slot_s
+            series = fetch_nearest_in(
+                latitude=latitude, longitude=longitude, quantities=quantities
             )
-            return WeatherObservation(
-                station_alias=station.alias,
-                observation_time=s_to_iso(slot_s - SECONDS_PER_SLICE),
-                interpolated=False,
-                reading_list=[
-                    WeatherObservationReading(
-                        channel_name=channel.name,
-                        quantity=Quantity.Irradiance,
-                        value=mean_w_m2 * UNIT_SCALE[channel.unit],
-                    )
-                    for channel in channels
-                ],
-            )
+            return gridpoint_observation(station, channels, series, slot_s)
 
         return fetch
 
