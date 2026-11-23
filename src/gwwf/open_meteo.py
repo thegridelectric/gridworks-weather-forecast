@@ -26,6 +26,7 @@ shortest-lead forecast.
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from collections.abc import Iterable
 from typing import Any, NamedTuple
@@ -43,6 +44,10 @@ MODEL = "gfs_seamless"
 # splice past HRRR's short range and across the whole horizon.
 RUN_STAMP_MODEL = "ncep_gfs013"
 TIMEOUT_S = 30
+# Open-Meteo answers 503 at the top of the hour, when every hourly
+# client arrives at once; a request made then is retried after these
+# pauses, in order, before the error stands.
+RETRY_PAUSES_S = (2.0, 5.0, 10.0)
 SECONDS_PER_SLICE = 3600
 MAX_FORECAST_DAYS = 16
 # Days the nearest-in request asks for: the slot's hour and, for an
@@ -79,12 +84,25 @@ def coordinates_from_locator(locator: str) -> tuple[float, float]:
 def _get(
     path: str, params: dict[str, Any] | None = None, *, base: str = OPEN_METEO_BASE
 ) -> dict[str, Any]:
-    response = requests.get(f"{base}{path}", params=params, timeout=TIMEOUT_S)
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, dict):
-        raise OpenMeteoProductError(f"{path}: non-object JSON response")
-    return data
+    """One Open-Meteo request; a 5xx or a transport failure is retried
+    over ``RETRY_PAUSES_S``, and the last error is raised."""
+    for pause_s in (*RETRY_PAUSES_S, None):
+        try:
+            response = requests.get(f"{base}{path}", params=params, timeout=TIMEOUT_S)
+            response.raise_for_status()
+        except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as e:
+            status = (
+                e.response.status_code if isinstance(e, requests.HTTPError) else None
+            )
+            if pause_s is None or (status is not None and status < 500):
+                raise
+            time.sleep(pause_s)
+            continue
+        data = response.json()
+        if not isinstance(data, dict):
+            raise OpenMeteoProductError(f"{path}: non-object JSON response")
+        return data
+    raise AssertionError("unreachable: the last attempt raises or returns")
 
 
 class IrradianceHourlyProduct(NamedTuple):

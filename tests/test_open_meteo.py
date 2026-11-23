@@ -17,6 +17,9 @@ from pathlib import Path
 import pytest
 
 from gwwf.grid import iso_to_s
+import requests
+
+import gwwf.open_meteo as open_meteo
 from gwwf.archive import value_at
 from gwwf.open_meteo import (
     OpenMeteoProductError,
@@ -182,3 +185,46 @@ def test_nearest_in_reads_the_hour_that_starts_at_the_slot() -> None:
     assert value_at(series[Quantity.WindSpeed], slot_s) == 10.8
     assert value_at(series[Quantity.Irradiance], slot_s) == 24.0
     assert value_at(series[Quantity.Irradiance], slot_s - 3600) == 84.0
+
+
+class _Response:
+    def __init__(self, status: int, body: dict | None = None) -> None:
+        self.status_code = status
+        self._body = body or {}
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            error = requests.HTTPError(f"{self.status_code}")
+            error.response = self  # type: ignore[assignment]
+            raise error
+
+    def json(self) -> dict:
+        return self._body
+
+
+def test_a_top_of_hour_503_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    answers = [_Response(503), _Response(503), _Response(200, {"ok": True})]
+    pauses: list[float] = []
+    monkeypatch.setattr(open_meteo.requests, "get", lambda *a, **k: answers.pop(0))
+    monkeypatch.setattr(open_meteo.time, "sleep", pauses.append)
+    assert open_meteo._get("/v1/forecast") == {"ok": True}
+    assert pauses == [2.0, 5.0]
+
+
+def test_retries_run_out_and_a_client_error_is_not_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(open_meteo.time, "sleep", lambda s: None)
+    monkeypatch.setattr(open_meteo.requests, "get", lambda *a, **k: _Response(503))
+    with pytest.raises(requests.HTTPError, match="503"):
+        open_meteo._get("/v1/forecast")
+    calls: list[int] = []
+
+    def bad_request(*a, **k) -> _Response:
+        calls.append(1)
+        return _Response(400)
+
+    monkeypatch.setattr(open_meteo.requests, "get", bad_request)
+    with pytest.raises(requests.HTTPError, match="400"):
+        open_meteo._get("/v1/forecast")
+    assert len(calls) == 1
