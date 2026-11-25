@@ -157,6 +157,22 @@ class _Series(NamedTuple):
     source_updated_time: UtcIso8601Seconds
 
 
+def _initial_last_slot(
+    now_s: int, period_s: int, offset_s: int, *, active: bool
+) -> int:
+    """Where a freshly built stream's slot cursor starts.
+
+    A stream with published state at or before now waits for the next
+    grid slot. A stream with none is activating (an empty database, a
+    bundle just minted, a clock that moved back): its first tick fires
+    the latest slot at or before now, so the cursor sits one period
+    before that slot.
+    """
+    if not active:
+        return now_s
+    return next_slot(now_s, period_s, offset_s) - 2 * period_s
+
+
 def _schedule(channels: Sequence[WeatherChannelGt]) -> tuple[int, int]:
     periods = {(c.emit_period_s, c.emit_offset_s) for c in channels}
     if len(periods) != 1:
@@ -186,18 +202,27 @@ class EmissionScheduler:
                     f"{stream.station.alias}: observation stream channels are on "
                     f"{stations}"
                 )
-        self._observations = [
-            (
+        self._observations = []
+        for stream in observation_streams:
+            period_s, offset_s = _schedule(stream.channels)
+            published_slot = stream.initial_published_slot
+            if published_slot is not None and published_slot > now_s:
+                # State stamped after now is not state: the clock moved
+                # back, and the stream activates as if it had never emitted.
+                published_slot = None
+            self._observations.append((
                 stream,
-                _schedule(stream.channels),
+                (period_s, offset_s),
                 _ObservationState(
-                    last_slot=now_s,
-                    last_real=stream.initial_observation,
-                    published_slot=stream.initial_published_slot,
+                    last_slot=_initial_last_slot(
+                        now_s, period_s, offset_s, active=published_slot is None
+                    ),
+                    last_real=stream.initial_observation
+                    if published_slot is not None
+                    else None,
+                    published_slot=published_slot,
                 ),
-            )
-            for stream in observation_streams
-        ]
+            ))
         for forecast_stream in forecast_streams:
             bound = [
                 b.forecast_channel.name for b in forecast_stream.bundle.binding_list
@@ -212,21 +237,29 @@ class EmissionScheduler:
                     f"{forecast_stream.bundle.name}: sources serve {sorted(served)}, "
                     f"the bundle binds {sorted(bound)}"
                 )
-        self._forecasts = [
-            (
+        self._forecasts = []
+        for stream in forecast_streams:
+            stored = {
+                source.name: source.initial_product
+                for source in stream.sources
+                if source.initial_product is not None
+                and iso_to_s(source.initial_product.update_time) <= now_s
+            }
+            period_s = stream.bundle.emit_period_s
+            offset_s = stream.bundle.emit_offset_s
+            self._forecasts.append((
                 stream,
-                (stream.bundle.emit_period_s, stream.bundle.emit_offset_s),
+                (period_s, offset_s),
                 _ForecastState(
-                    last_slot=now_s,
-                    stored={
-                        source.name: source.initial_product
-                        for source in stream.sources
-                        if source.initial_product is not None
-                    },
+                    last_slot=_initial_last_slot(
+                        now_s,
+                        period_s,
+                        offset_s,
+                        active=len(stored) < len(stream.sources),
+                    ),
+                    stored=stored,
                 ),
-            )
-            for stream in forecast_streams
-        ]
+            ))
         self._publish = publish
         self._raise_glitch = raise_glitch
         self._stale_after_s = stale_after_s

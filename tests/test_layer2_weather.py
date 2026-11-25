@@ -278,7 +278,7 @@ def fake_adapters(now_s: int) -> dict[str, ProductAdapter]:
     """The two fake Methods' adapters: scripted products, no network."""
     return {
         NWS_METHOD: ProductAdapter(
-            fetch_for=lambda channel: lambda slices: fake_product(now_s),
+            fetch_for=lambda channel, now: lambda slices: fake_product(now_s),
             kind=HourlyForecastProduct,
             series={
                 Quantity.Temperature: lambda p: p.temperature_f,
@@ -286,7 +286,7 @@ def fake_adapters(now_s: int) -> dict[str, ProductAdapter]:
             },
         ),
         IRRADIANCE_METHOD: ProductAdapter(
-            fetch_for=lambda channel: lambda slices: fake_irradiance(now_s),
+            fetch_for=lambda channel, now: lambda slices: fake_irradiance(now_s),
             kind=IrradianceHourlyProduct,
             series={Quantity.Irradiance: lambda p: p.irradiance_w_m2},
         ),

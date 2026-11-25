@@ -244,6 +244,7 @@ class Harness:
         max_fill_s: int = 3 * 3600,
         initial_observation: WeatherObservation | None = None,
         initial_published_slot: int | None = None,
+        initial_product: HourlyForecastProduct | None = None,
         now_s: int = 0,
         template: WeatherSeasonalTemplateGt | None = None,
     ) -> None:
@@ -273,6 +274,7 @@ class Harness:
                 ProductSource(
                     name="nws",
                     fetch=self._next_product,
+                    initial_product=initial_product,
                     series=[
                         s
                         for s in (TEMP_SERIES, WIND_SERIES)
@@ -391,12 +393,13 @@ def test_long_gap_stays_a_gap() -> None:
 
 
 def test_restart_restores_latest_only_and_replay() -> None:
-    # A fresh scheduler carrying restored state (the actor loads it
-    # from the DB) behaves as if it never stopped.
+    # A fresh scheduler with restored state (the actor loads it from
+    # the DB) behaves as if it never stopped.
     h = Harness(
         observations=[obs_at(55, 1000, 2000), obs_at(235, 1900, 5000)],
         initial_observation=obs_at(55, 1000, 2000),
         initial_published_slot=60,
+        now_s=100,
     )
     h.scheduler.run_pending(120)  # same observation: latest-only holds
     assert h.published == []
@@ -406,6 +409,47 @@ def test_restart_restores_latest_only_and_replay() -> None:
         (True, s_to_iso(120)),
         (True, s_to_iso(180)),
         (False, s_to_iso(235)),
+    ]
+
+
+def test_a_stream_with_nothing_published_activates_at_the_latest_slot() -> None:
+    # Built at 100 with no published state (an empty database, a station
+    # just minted): the first tick fires the latest slot at or before now.
+    h = Harness(observations=[obs_at(95, 7000, 4000)], now_s=100)
+    h.scheduler.run_pending(100)
+    assert [(m.observation_time, r) for m, r in h.published] == [
+        (s_to_iso(95), STATION)
+    ]
+    h.scheduler.run_pending(119)  # the grid resumes from that slot
+    assert len(h.published) == 1
+
+
+def test_a_stream_with_published_state_waits_for_the_grid() -> None:
+    h = Harness(
+        observations=[obs_at(95, 7000, 4000)],
+        initial_observation=obs_at(55, 1000, 2000),
+        initial_published_slot=60,
+        now_s=100,
+    )
+    h.scheduler.run_pending(100)
+    assert h.published == []
+    h.scheduler.run_pending(120)
+    assert [m.observation_time for m, _ in h.published] == [s_to_iso(95)]
+
+
+def test_published_state_from_the_future_is_dropped_and_the_stream_activates() -> None:
+    # The clock moved back past the restored state: that state is not
+    # state, and the stream fires as if it had never emitted, with no
+    # replay toward a future slot.
+    h = Harness(
+        observations=[obs_at(95, 7000, 4000)],
+        initial_observation=obs_at(655, 1000, 2000),
+        initial_published_slot=660,
+        now_s=100,
+    )
+    h.scheduler.run_pending(100)
+    assert [(m.observation_time, m.interpolated) for m, _ in h.published] == [
+        (s_to_iso(95), False)
     ]
 
 
@@ -454,6 +498,51 @@ def test_forecast_live_emits_one_bundle_message_on_channel_grid() -> None:
     assert series_of(message, WIND_FC).values == [5000, 5000, 5000]
     assert series_of(message, IRR_FC).values == [100, 100, 100]
     assert h.glitches == []
+
+
+def test_a_bundle_with_no_stored_product_activates_at_the_latest_slot() -> None:
+    # Built at B+100 on the 60/30 grid: the latest slot at or before now
+    # is B+90, and the first tick fires it.
+    h = Harness(products=[product_from(B, [10, 20], [5, 6])], now_s=B + 100)
+    h.scheduler.run_pending(B + 100)
+    assert len(h.published) == 1
+    message, radio = h.published[0]
+    assert radio == BUNDLE_NAME
+    assert message.message_created_ms == (B + 90) * 1000
+    h.scheduler.run_pending(B + 149)
+    assert len(h.published) == 1
+    h.scheduler.run_pending(B + 150)
+    assert len(h.published) == 2
+
+
+def test_a_bundle_with_a_stored_product_waits_for_the_grid() -> None:
+    # Every source of the bundle has a stored product at or before now.
+    h = Harness(
+        products=[product_from(B, [10, 20], [5, 6])],
+        initial_product=product_from(B - 3600, [10, 20], [5, 6]),
+        now_s=B + 100,
+        bundle=SMALL_BUNDLE,
+    )
+    h.scheduler.run_pending(B + 100)
+    assert h.published == []
+    h.scheduler.run_pending(B + 150)
+    assert len(h.published) == 1
+
+
+def test_a_stored_product_from_the_future_is_dropped_and_the_bundle_activates() -> None:
+    h = Harness(
+        products=[product_from(B, [10, 20], [5, 6])],
+        initial_product=product_from(B + 7200, [99, 99], [9, 9]),
+        now_s=B + 100,
+    )
+    h.scheduler.run_pending(B + 100)
+    assert len(h.published) == 1
+    message, _ = h.published[0]
+    assert series_of(message, TEMP_FC).values == [
+        1000,
+        1000,
+        1000,
+    ]  # the fresh fetch, not the future rung
 
 
 def test_temperature_only_bundle_emits_one_series() -> None:
