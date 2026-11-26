@@ -20,6 +20,9 @@ step "uv sync (locked)" uv sync --all-groups --locked
 step "ruff check" uv run ruff check --no-fix .
 step "ruff format --check" uv run ruff format --check .
 step "pyright" uv run pyright
+step "sema snapshot staging check" uv run python -P \
+  src/gwwf/sema/check_staging.py src/gwwf/sema_seed_request.yaml \
+  --deploy-branch main
 if ! docker info >/dev/null 2>&1; then
   echo "ERROR: docker is not running; the test suite uses testcontainers." >&2
   exit 1

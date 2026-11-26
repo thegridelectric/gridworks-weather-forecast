@@ -9,15 +9,21 @@ from the publish hook, the source products through a caching fetch
 wrapper, last-observation state on publish. An EMPTY record set is a
 legal boot state — the actor is the create command's consumer, so it
 necessarily runs before any records exist; no records means an idle
-scheduler, never a boot failure.
+scheduler, never a boot failure. Plant time comes from one `Clock`
+(`clock.py`): the wall, or the time coordinator's steps through gwbase's
+`on_simulated_time`, each answered with `sim.ready` after the tick. The
+scheduler is built on the main loop's thread, at the first tick and
+after each applied create, from the records and the clock's now; a
+stream with no published state at or before now emits on that first
+tick, then on its grid.
 
 Records enter by `gw.weather.create.cmd` over the bus: the actor
 validates through the snapshot, inserts (insert-only — records are
 durable identities, never upserted), broadcasts the record once, and
 replies `gw.weather.cmd.ack` / `gw.weather.cmd.nack` direct to the
-sender, correlated by the hash of the command bytes as published. The
-scheduler rebuilds from the DB after each applied create, so minted
-records start emitting without a restart.
+sender, correlated by the hash of the command bytes as published. An
+applied create marks the scheduler stale, so minted records start
+emitting at the next tick without a restart.
 
 History enters by `gw.weather.archive.cmd` over the bus: the actor
 checks the command against its records and the archive Method table,
@@ -66,6 +72,7 @@ from gwwf.archive import (
     plan_archive,
     readings_for,
 )
+from gwwf.clock import Clock, TimestepClock, build_clock
 from gwwf.config import GwwfSettings
 from gwwf.create import CREATE_CMD, command_hash
 from gwwf.db.session import session_factory_from
@@ -131,15 +138,20 @@ ARCHIVE_SEND_INTERVAL_S = 0.05
 class ProductAdapter(NamedTuple):
     """How one Method is acquired: ``fetch_for`` builds the fetch from
     the forecast channel record (the SourceLocator is the adapter's
-    own encoding), ``kind`` is the product type the cache restores,
-    ``series`` picks each quantity's list out of the product."""
+    own encoding) and the clock's ``now``, ``kind`` is the product type
+    the cache restores, ``series`` picks each quantity's list out of
+    the product."""
 
-    fetch_for: Callable[[WeatherForecastChannelGt], Callable[[int], Any]]
+    fetch_for: Callable[
+        [WeatherForecastChannelGt, Callable[[], int]], Callable[[int], Any]
+    ]
     kind: Callable[..., Any]
     series: Mapping[Quantity, Callable[[Any], list[int]]]
 
 
-def _nws_fetch_for(channel: WeatherForecastChannelGt) -> Callable[[int], Any]:
+def _nws_fetch_for(
+    channel: WeatherForecastChannelGt, now: Callable[[], int]
+) -> Callable[[int], Any]:
     if channel.source_locator is None:
         raise ValueError(f"{channel.name}: no SourceLocator on the record")
     gridpoint = gridpoint_from_locator(channel.source_locator)
@@ -150,7 +162,9 @@ def _nws_fetch_for(channel: WeatherForecastChannelGt) -> Callable[[int], Any]:
     return fetch
 
 
-def _open_meteo_fetch_for(channel: WeatherForecastChannelGt) -> Callable[[int], Any]:
+def _open_meteo_fetch_for(
+    channel: WeatherForecastChannelGt, now: Callable[[], int]
+) -> Callable[[int], Any]:
     if channel.source_locator is None:
         raise ValueError(f"{channel.name}: no SourceLocator on the record")
     latitude, longitude = coordinates_from_locator(channel.source_locator)
@@ -160,7 +174,7 @@ def _open_meteo_fetch_for(channel: WeatherForecastChannelGt) -> Callable[[int], 
             latitude=latitude,
             longitude=longitude,
             slices=slices,
-            now_s=int(time.time()),
+            now_s=now(),
         )
 
     return fetch
@@ -225,6 +239,7 @@ class WeatherActor(GridworksActor):
         | None = None,
         adapters: Mapping[str, ProductAdapter] | None = None,
         archive_methods: Mapping[str, HistoryPull] | None = None,
+        clock: Clock | None = None,
     ) -> None:
         super().__init__(
             settings=settings,
@@ -239,15 +254,20 @@ class WeatherActor(GridworksActor):
             **ARCHIVE_METHODS,
             **(archive_methods or {}),
         }
-        self.scheduler = self._build_scheduler()
+        self.clock = clock if clock is not None else build_clock(settings.clock_source)
+        # The scheduler is built on the main loop's thread, at the first
+        # tick and again after every accepted create, from the records
+        # and the clock's now. None until the first build succeeds.
+        self.scheduler: EmissionScheduler | None = None
+        self.scheduler_stale = threading.Event()
+        self.scheduler_stale.set()
         self.main_thread = threading.Thread(target=self.main, daemon=True)
 
     # ------------------------------------------------------------------
     # Scheduler construction (from the DB records)
     # ------------------------------------------------------------------
 
-    def _build_scheduler(self) -> EmissionScheduler:
-        now_s = int(time.time())
+    def _build_scheduler(self, now_s: int) -> EmissionScheduler:
         observation_streams: list[ObservationStream] = []
         forecast_streams: list[ForecastStream] = []
         with self._sessions() as session:
@@ -332,7 +352,7 @@ class WeatherActor(GridworksActor):
                 sources[key] = ProductSource(
                     name=f"{channel.method} {channel.source_locator or ''}".strip(),
                     fetch=self._caching_product_fetch(
-                        adapter.fetch_for(channel), channel
+                        adapter.fetch_for(channel, self.clock.now), channel
                     ),
                     series=[],
                     initial_product=load_product(
@@ -380,7 +400,7 @@ class WeatherActor(GridworksActor):
         quantities = {channel.quantity for channel in channels}
 
         def fetch() -> WeatherObservation:
-            slot_s = (int(time.time()) // SECONDS_PER_SLICE) * SECONDS_PER_SLICE
+            slot_s = (self.clock.now() // SECONDS_PER_SLICE) * SECONDS_PER_SLICE
             series = fetch_nearest_in(
                 latitude=latitude, longitude=longitude, quantities=quantities
             )
@@ -417,7 +437,14 @@ class WeatherActor(GridworksActor):
 
     def local_stop(self) -> None:
         self._main_loop_running = False
+        self.clock.interrupt()
         self.main_thread.join()
+
+    def on_simulated_time(
+        self, *, time_unix_s: int, from_alias: str, is_new: bool
+    ) -> None:
+        if isinstance(self.clock, TimestepClock):
+            self.clock.step(time_unix_s)
 
     def process_message(
         self,
@@ -438,11 +465,30 @@ class WeatherActor(GridworksActor):
 
     def main(self) -> None:
         while self._main_loop_running:
+            self.clock.wait(TICK_S)
+            if not self._main_loop_running:
+                return
             try:
-                self.scheduler.run_pending(int(time.time()))
+                self.tick(self.clock.now())
             except Exception:  # noqa: BLE001 -- the loop must survive anything
                 self.logger.exception("scheduler tick failed")
-            time.sleep(TICK_S)
+
+    def tick(self, now_s: int) -> None:
+        """One pass of plant time: rebuild the scheduler if the records
+        changed, fire what is due, and under the coordinator's clock
+        tell it this step is done."""
+        if self.scheduler_stale.is_set():
+            self.scheduler_stale.clear()
+            try:
+                self.scheduler = self._build_scheduler(now_s)
+            except Exception as e:  # noqa: BLE001 -- the records are in;
+                # emission wiring is what failed. Keep the old scheduler
+                # (or none) running and say so; the next create retries.
+                self._raise_glitch(LogLevel.Warning, "scheduler build failed", str(e))
+        if self.scheduler is not None:
+            self.scheduler.run_pending(now_s)
+        if isinstance(self.clock, TimestepClock):
+            self.send_ready(time_unix_s=now_s)
 
     # ------------------------------------------------------------------
     # The create round
@@ -469,13 +515,7 @@ class WeatherActor(GridworksActor):
         self.send(envelope=out, body=json.dumps(record.to_dict()).encode("utf-8"))
         self._reply(envelope, WeatherCmdAck(command_hash=chash))
         self.logger.info("created %s %s", record.type_name, record_name(record))
-        try:
-            self.scheduler = self._build_scheduler()
-        except Exception as e:  # noqa: BLE001 -- the record is in; emission
-            # wiring is what failed. Keep the old scheduler running and say so.
-            self._raise_glitch(
-                LogLevel.Warning, "scheduler rebuild failed after create", str(e)
-            )
+        self.scheduler_stale.set()
 
     # ------------------------------------------------------------------
     # The archive round
@@ -583,7 +623,7 @@ class WeatherActor(GridworksActor):
             type=level,
             summary=summary,
             details=details,
-            created_ms=int(time.time() * 1000),
+            created_ms=self.clock.now() * 1000,
         )
         envelope = self.broadcast_envelope(type_name=glitch.type_name)
         self.send(envelope=envelope, body=json.dumps(glitch.to_dict()).encode("utf-8"))

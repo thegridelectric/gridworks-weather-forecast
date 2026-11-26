@@ -6,6 +6,8 @@ from gwbase.transport_format import LeftRightDot
 from pydantic import SecretStr
 from pydantic_settings import SettingsConfigDict
 
+from gwwf.clock import ClockSource
+
 
 class GwwfSettings(GNodeSettings):
     """Reads from env (GWWF_*) and/or a `.env` file at the repo root.
@@ -37,6 +39,10 @@ class GwwfSettings(GNodeSettings):
     # the supervisor and the time coordinator the actor heartbeats with.
     my_super_alias: str = "d1.super"
     my_time_coordinator_alias: str = "d1.time"
+
+    # The actor's one clock. Wall is the fleet; Timestep runs plant time
+    # from the time coordinator's sim.timestep broadcasts.
+    clock_source: ClockSource = ClockSource.Wall
 
     # The minter (`gwwf create`): the broker client the create command
     # connects with. It is its own Service principal, so under a gated
