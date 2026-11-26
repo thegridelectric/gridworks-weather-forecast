@@ -245,6 +245,7 @@ class Harness:
         initial_observation: WeatherObservation | None = None,
         initial_published_slot: int | None = None,
         initial_product: HourlyForecastProduct | None = None,
+        forecast_published_slot: int | None = None,
         now_s: int = 0,
         template: WeatherSeasonalTemplateGt | None = None,
     ) -> None:
@@ -292,7 +293,12 @@ class Harness:
                     )
                 )
             streams["forecast_streams"] = [
-                ForecastStream(bundle=bundle, sources=sources, template=template)
+                ForecastStream(
+                    bundle=bundle,
+                    sources=sources,
+                    template=template,
+                    initial_published_slot=forecast_published_slot,
+                )
             ]
         else:
             streams["forecast_streams"] = []
@@ -500,7 +506,7 @@ def test_forecast_live_emits_one_bundle_message_on_channel_grid() -> None:
     assert h.glitches == []
 
 
-def test_a_bundle_with_no_stored_product_activates_at_the_latest_slot() -> None:
+def test_a_bundle_with_no_published_forecast_activates_at_the_latest_slot() -> None:
     # Built at B+100 on the 60/30 grid: the latest slot at or before now
     # is B+90, and the first tick fires it.
     h = Harness(products=[product_from(B, [10, 20], [5, 6])], now_s=B + 100)
@@ -515,11 +521,10 @@ def test_a_bundle_with_no_stored_product_activates_at_the_latest_slot() -> None:
     assert len(h.published) == 2
 
 
-def test_a_bundle_with_a_stored_product_waits_for_the_grid() -> None:
-    # Every source of the bundle has a stored product at or before now.
+def test_a_bundle_with_a_published_forecast_waits_for_the_grid() -> None:
     h = Harness(
         products=[product_from(B, [10, 20], [5, 6])],
-        initial_product=product_from(B - 3600, [10, 20], [5, 6]),
+        forecast_published_slot=B + 90,
         now_s=B + 100,
         bundle=SMALL_BUNDLE,
     )
@@ -527,6 +532,32 @@ def test_a_bundle_with_a_stored_product_waits_for_the_grid() -> None:
     assert h.published == []
     h.scheduler.run_pending(B + 150)
     assert len(h.published) == 1
+
+
+def test_a_stored_product_does_not_stand_for_a_published_forecast() -> None:
+    # The product is the acquisition's, fetched for another bundle on it;
+    # this bundle has published nothing, so it activates.
+    h = Harness(
+        products=[product_from(B, [10, 20], [5, 6])],
+        initial_product=product_from(B - 3600, [10, 20], [5, 6]),
+        now_s=B + 100,
+        bundle=SMALL_BUNDLE,
+    )
+    h.scheduler.run_pending(B + 100)
+    assert len(h.published) == 1
+    message, _ = h.published[0]
+    assert message.message_created_ms == (B + 90) * 1000
+
+
+def test_a_bundle_published_with_no_stored_product_waits_for_the_grid() -> None:
+    # Its last emission was on the template rung: published, nothing stored.
+    h = Harness(
+        products=[product_from(B, [10, 20], [5, 6])],
+        forecast_published_slot=B + 90,
+        now_s=B + 100,
+    )
+    h.scheduler.run_pending(B + 100)
+    assert h.published == []
 
 
 def test_a_stored_product_from_the_future_is_dropped_and_the_bundle_activates() -> None:
