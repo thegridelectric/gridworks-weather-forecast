@@ -12,7 +12,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, Protocol, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -412,6 +412,21 @@ def latest_forecast(session: Session, bundle_name: str) -> WeatherForecast | Non
     if row is None:
         return None
     return default_codec.from_dict(row.payload, expect=WeatherForecast)
+
+
+def latest_forecast_slot(
+    session: Session, bundle_name: str, *, now_s: int
+) -> int | None:
+    """The slot of the newest forecast the archive serves for the bundle
+    at or before ``now_s``, None when it serves none."""
+    created_ms = session.scalar(
+        select(func.max(ForecastSql.message_created_ms)).where(
+            ForecastSql.bundle_name == bundle_name,
+            SERVED_VERSION,
+            ForecastSql.message_created_ms <= now_s * 1000,
+        )
+    )
+    return None if created_ms is None else created_ms // 1000
 
 
 # ----------------------------------------------------------------------

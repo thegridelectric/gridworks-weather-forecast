@@ -23,7 +23,9 @@ durable identities, never upserted), broadcasts the record once, and
 replies `gw.weather.cmd.ack` / `gw.weather.cmd.nack` direct to the
 sender, correlated by the hash of the command bytes as published. An
 applied create marks the scheduler stale, so minted records start
-emitting at the next tick without a restart.
+emitting at the next tick without a restart. A build that fails is
+tried again ``BUILD_RETRY_S`` later, and the scheduler it would have
+replaced runs until one succeeds.
 
 History enters by `gw.weather.archive.cmd` over the bus: the actor
 checks the command against its records and the archive Method table,
@@ -80,6 +82,7 @@ from gwwf.db.store import (
     P,
     active_seasonal_template,
     insert_record,
+    latest_forecast_slot,
     load_bundles,
     load_last_observation,
     load_product,
@@ -132,6 +135,7 @@ from gwwf.units import UNIT_SCALE
 
 GLITCH_NODE = "scheduler"
 TICK_S = 1.0
+BUILD_RETRY_S = 30
 ARCHIVE_SEND_INTERVAL_S = 0.05
 
 
@@ -261,6 +265,8 @@ class WeatherActor(GridworksActor):
         self.scheduler: EmissionScheduler | None = None
         self.scheduler_stale = threading.Event()
         self.scheduler_stale.set()
+        # Plant time before which a failed build is not tried again.
+        self.build_retry_at_s: int | None = None
         self.main_thread = threading.Thread(target=self.main, daemon=True)
 
     # ------------------------------------------------------------------
@@ -374,6 +380,9 @@ class WeatherActor(GridworksActor):
             bundle=bundle,
             sources=list(sources.values()),
             template=active_seasonal_template(session, bundle.location_alias, now_s),
+            initial_published_slot=latest_forecast_slot(
+                session, bundle.name, now_s=now_s
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -476,14 +485,25 @@ class WeatherActor(GridworksActor):
     def tick(self, now_s: int) -> None:
         """One pass of plant time: rebuild the scheduler if the records
         changed, fire what is due, and under the coordinator's clock
-        tell it this step is done."""
-        if self.scheduler_stale.is_set():
+        tell it this step is done.
+
+        The scheduler being replaced fires what is due at this now
+        first: its replacement starts every cursor at now, so a slot
+        between the last tick and this one is the old one's to fire.
+        """
+        build_due = self.build_retry_at_s is None or now_s >= self.build_retry_at_s
+        if self.scheduler_stale.is_set() and build_due:
+            if self.scheduler is not None:
+                self.scheduler.run_pending(now_s)
             self.scheduler_stale.clear()
             try:
                 self.scheduler = self._build_scheduler(now_s)
+                self.build_retry_at_s = None
             except Exception as e:  # noqa: BLE001 -- the records are in;
                 # emission wiring is what failed. Keep the old scheduler
-                # (or none) running and say so; the next create retries.
+                # (or none) running, say so, and try again after a pause.
+                self.scheduler_stale.set()
+                self.build_retry_at_s = now_s + BUILD_RETRY_S
                 self._raise_glitch(LogLevel.Warning, "scheduler build failed", str(e))
         if self.scheduler is not None:
             self.scheduler.run_pending(now_s)

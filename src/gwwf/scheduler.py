@@ -124,11 +124,15 @@ class ForecastStream(NamedTuple):
     (axiom-shared); every binding of the bundle is served by exactly
     one source. ``template`` is the location's seasonal template, a
     temperature series' last rung, None when the location has none.
+    ``initial_published_slot`` is the slot of the bundle's newest
+    forecast at or before the build's now, None when it has none: the
+    bundle's own published state, whatever its sources have stored.
     """
 
     bundle: WeatherForecastBundleGt
     sources: list[ProductSource]
     template: WeatherSeasonalTemplateGt | None = None
+    initial_published_slot: int | None = None
 
 
 @dataclass
@@ -255,7 +259,7 @@ class EmissionScheduler:
                         now_s,
                         period_s,
                         offset_s,
-                        active=len(stored) < len(stream.sources),
+                        active=stream.initial_published_slot is None,
                     ),
                     stored=stored,
                 ),
